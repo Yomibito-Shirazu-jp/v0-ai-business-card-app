@@ -94,14 +94,13 @@ interface BusinessCard {
   syncedToGoogle: boolean
 }
 
-// Google Workspace連携ステータス
-const gwsIntegrations = [
-  { name: "Google Contacts", status: "connected", icon: Users, lastSync: "5分前", connected: true },
-  { name: "Google Calendar", status: "connected", icon: Calendar, lastSync: "10分前", connected: true },
-  { name: "Gmail", status: "connected", icon: Mail, lastSync: "2分前", connected: true },
-  { name: "Google Drive", status: "connected", icon: FolderSync, lastSync: "15分前", connected: true },
-  { name: "Google Meet", status: "connected", icon: ExternalLink, lastSync: "即時", connected: true },
-]
+// Google Workspace連携サービス定義（Meetは削除）
+const GOOGLE_SERVICES = [
+  { key: 'contacts', name: 'Google Contacts', icon: Users, description: '取引先の連絡先を名刺と同期', scope: 'https://www.googleapis.com/auth/contacts.readonly' },
+  { key: 'calendar', name: 'Google Calendar', icon: Calendar, description: '名刺から会議予定を作成・顧客との会議頻度分析', scope: 'https://www.googleapis.com/auth/calendar' },
+  { key: 'gmail', name: 'Gmail', icon: Mail, description: '顧客とのメールやりとりを分析（本文は保存しない）', scope: 'https://www.googleapis.com/auth/gmail.readonly' },
+  { key: 'drive', name: 'Google Drive', icon: FolderSync, description: '共有資料の頻度を分析（メタデータのみ）', scope: 'https://www.googleapis.com/auth/drive.metadata.readonly' },
+] as const
 
 // サイドバーナビゲーション
 const sidebarNav = [
@@ -201,8 +200,60 @@ export default function BusinessCardApp() {
   const pageSize = 50
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // ユーザー情報取得
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; plan: string } | null>(null)
+  // ユーザー情報取得（拡張版）
+  const [currentUser, setCurrentUser] = useState<{
+    id: string | null
+    name: string
+    nameKana: string
+    email: string
+    plan: string
+    role: string | null
+    avatarUrl: string | null
+    phone: string | null
+    mobile: string | null
+    department: string | null
+    position: string | null
+    timezone: string
+    language: string
+    theme: string
+    disabledGoogleServices: string[]
+    notificationPrefs: {
+      new_card_email: boolean
+      order_status_email: boolean
+      cold_customer_weekly: boolean
+    }
+  } | null>(null)
+
+  // Google Scope状態
+  const [googleScopes, setGoogleScopes] = useState<{
+    hasGoogleAuth: boolean
+    contacts: boolean
+    calendar: boolean
+    gmail: boolean
+    drive: boolean
+    email: string | null
+    tokenExpired?: boolean
+  } | null>(null)
+
+  // ログイン履歴
+  const [loginEvents, setLoginEvents] = useState<Array<{
+    id: number
+    occurred_at: string
+    ip_address: string | null
+    user_agent: string | null
+    method: string | null
+  }>>([])
+
+  // プロフィール編集フォーム
+  const [profileForm, setProfileForm] = useState({
+    display_name: '',
+    display_name_kana: '',
+    phone: '',
+    mobile: '',
+    department: '',
+    position: '',
+  })
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
   
   useEffect(() => {
     const fetchUser = async () => {
@@ -211,19 +262,55 @@ export default function BusinessCardApp() {
         if (res.ok) {
           const data = await res.json()
           setCurrentUser(data)
+          // プロフィールフォームに初期値設定
+          setProfileForm({
+            display_name: data.name || '',
+            display_name_kana: data.nameKana || '',
+            phone: data.phone || '',
+            mobile: data.mobile || '',
+            department: data.department || '',
+            position: data.position || '',
+          })
         }
       } catch {
         // ログインしていない場合は無視
       }
     }
+    
+    const fetchGoogleScopes = async () => {
+      try {
+        const res = await fetch('/api/google/scopes')
+        if (res.ok) {
+          const data = await res.json()
+          setGoogleScopes(data)
+        }
+      } catch {
+        // エラー時は無視
+      }
+    }
+
+    const fetchLoginEvents = async () => {
+      try {
+        const res = await fetch('/api/me/login-events')
+        if (res.ok) {
+          const data = await res.json()
+          setLoginEvents(data.events || [])
+        }
+      } catch {
+        // エラー時は無視
+      }
+    }
+
     fetchUser()
+    fetchGoogleScopes()
+    fetchLoginEvents()
   }, [])
 
   // ネットワークデータを名刺から動的生成
   const networkNodes = useMemo(() => generateNetworkNodes(cards), [cards])
   const networkLinks = useMemo(() => generateNetworkLinks(cards), [cards])
 
-  // Supabaseから名刺データを取得（ページネーション対応）
+  // Supabaseから名刺データを���得（ページネーション対応）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -573,21 +660,7 @@ export default function BusinessCardApp() {
               ))}
             </ul>
 
-            {/* GWS連携ステータス */}
-            <div className="mt-6">
-              <p className="px-3 text-xs font-medium text-muted-foreground mb-2">Google Workspace 連携</p>
-              <ul className="space-y-1">
-                {gwsIntegrations.map((integration) => (
-                  <li key={integration.name}>
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs">
-                      <integration.icon className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="flex-1 text-muted-foreground">{integration.name}</span>
-                      <span className="w-2 h-2 rounded-full bg-accent" />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {/* 設定へのリンク（Google連携はここでバッジ表示） */}
           </nav>
 
           {/* ユーザー */}
@@ -997,32 +1070,354 @@ export default function BusinessCardApp() {
           {/* 設定ビュー */}
           {currentView === "settings" && (
             <div className="flex-1 p-6 overflow-auto">
-              <div className="max-w-2xl space-y-6">
+              <div className="max-w-3xl space-y-6">
+                {/* Google Workspace 連携 */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Google Workspace 連携</CardTitle>
-                    <CardDescription>Google サービスとの連携設定</CardDescription>
+                    <CardDescription>
+                      Google アカウントでログインすると、各サービスとの連携が可能になります。
+                      連携には個別の権限承認が必要です。
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {gwsIntegrations.map(item => (
-                      <div key={item.name} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <item.icon className="w-5 h-5" />
-                          <span>{item.name}</span>
+                    {/* 全体接続状況 */}
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Google アカウント</p>
+                          <p className="text-sm text-muted-foreground">
+                            {googleScopes?.email || currentUser?.email || '未接続'}
+                          </p>
                         </div>
-                        <Badge variant={item.connected ? "default" : "secondary"}>
-                          {item.connected ? "接続済み" : "未接続"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {googleScopes?.hasGoogleAuth ? (
+                            <>
+                              <Badge variant="default">接続済み</Badge>
+                              {googleScopes?.tokenExpired && (
+                                <Badge variant="destructive">トークン期限切れ</Badge>
+                              )}
+                            </>
+                          ) : (
+                            <Badge variant="secondary">未接続</Badge>
+                          )}
+                        </div>
                       </div>
-                    ))}
+                    </div>
+
+                    {/* サービス別 */}
+                    <div className="space-y-3">
+                      {GOOGLE_SERVICES.map((service) => {
+                        const isEnabled = googleScopes?.[service.key as keyof typeof googleScopes] === true
+                        const isDisabledByUser = currentUser?.disabledGoogleServices?.includes(service.key)
+                        return (
+                          <div key={service.key} className="flex items-center justify-between p-4 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <service.icon className="w-5 h-5 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium">{service.name}</p>
+                                <p className="text-sm text-muted-foreground">{service.description}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isDisabledByUser ? (
+                                <Badge variant="outline">無効化済み</Badge>
+                              ) : isEnabled ? (
+                                <Badge variant="default">承認済み</Badge>
+                              ) : (
+                                <Badge variant="secondary">未承認</Badge>
+                              )}
+                              {!isEnabled && !isDisabledByUser && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    // OAuth再認証でスコープ追加
+                                    const { createClient } = await import('@/lib/supabase/client')
+                                    const supabase = createClient()
+                                    await supabase.auth.signInWithOAuth({
+                                      provider: 'google',
+                                      options: {
+                                        scopes: service.scope,
+                                        queryParams: {
+                                          include_granted_scopes: 'true',
+                                          access_type: 'offline',
+                                          prompt: 'consent',
+                                        },
+                                        redirectTo: `${window.location.origin}/auth/callback?next=/`,
+                                      },
+                                    })
+                                  }}
+                                >
+                                  この権限を許可
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Google Meet は Calendar 経由で自動的に利用可能です
+                    </p>
                   </CardContent>
                 </Card>
+
+                {/* プロフィール */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>アカウント設定</CardTitle>
+                    <CardTitle>プロフィール</CardTitle>
+                    <CardDescription>あなたの基本情報を編集できます</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">氏名</label>
+                        <Input
+                          value={profileForm.display_name}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, display_name: e.target.value }))}
+                          placeholder="山田 太郎"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">フリガナ</label>
+                        <Input
+                          value={profileForm.display_name_kana}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                          placeholder="ヤマダ タロウ"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">メールアドレス</label>
+                      <Input value={currentUser?.email || ''} disabled className="bg-muted" />
+                      <p className="text-xs text-muted-foreground mt-1">メールアドレスは変更できません</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">部署</label>
+                        <Input
+                          value={profileForm.department}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, department: e.target.value }))}
+                          placeholder="営業部"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">役職</label>
+                        <Input
+                          value={profileForm.position}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, position: e.target.value }))}
+                          placeholder="部長"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">電話番号</label>
+                        <Input
+                          value={profileForm.phone}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, phone: e.target.value }))}
+                          placeholder="03-1234-5678"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">携帯電話</label>
+                        <Input
+                          value={profileForm.mobile}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, mobile: e.target.value }))}
+                          placeholder="090-1234-5678"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={async () => {
+                        setIsSavingProfile(true)
+                        try {
+                          const res = await fetch('/api/me', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(profileForm),
+                          })
+                          if (res.ok) {
+                            alert('保存しました')
+                            // ユーザー情報を再取得
+                            const userRes = await fetch('/api/me')
+                            if (userRes.ok) {
+                              const data = await userRes.json()
+                              setCurrentUser(data)
+                            }
+                          } else {
+                            alert('保存に失敗しました')
+                          }
+                        } finally {
+                          setIsSavingProfile(false)
+                        }
+                      }}
+                      disabled={isSavingProfile}
+                    >
+                      {isSavingProfile ? '保存中...' : '保存'}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* セキュリティ */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>セキュリティ</CardTitle>
+                    <CardDescription>ログイン情報とセッション管理</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <p className="text-sm font-medium">ログイン方法</p>
+                      <p className="text-sm text-muted-foreground">Google OAuth</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">最近のログイン履歴</p>
+                      {loginEvents.length > 0 ? (
+                        <div className="mt-2 space-y-2">
+                          {loginEvents.slice(0, 5).map((event) => (
+                            <div key={event.id} className="text-sm p-2 bg-muted/50 rounded">
+                              <p>{new Date(event.occurred_at).toLocaleString('ja-JP')}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {event.ip_address || '不明'} / {event.method || 'unknown'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">履歴がありません</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        if (!confirm('全てのデバイスからログアウトしますか？')) return
+                        const res = await fetch('/api/me/sign-out-all', { method: 'POST' })
+                        if (res.ok) {
+                          window.location.href = '/login'
+                        }
+                      }}
+                    >
+                      全デバイスからログアウト
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* 通知設定 */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>通知設定</CardTitle>
+                    <CardDescription>メール通知の設定</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">新しい名刺が登録された時</p>
+                        <p className="text-sm text-muted-foreground">チームメンバーが名刺を登録した時に通知</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={currentUser?.notificationPrefs?.new_card_email || false}
+                        onChange={async (e) => {
+                          const newPrefs = {
+                            ...currentUser?.notificationPrefs,
+                            new_card_email: e.target.checked,
+                          }
+                          await fetch('/api/me', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notification_prefs: newPrefs }),
+                          })
+                          if (currentUser) {
+                            setCurrentUser({ ...currentUser, notificationPrefs: newPrefs as typeof currentUser.notificationPrefs })
+                          }
+                        }}
+                        className="w-5 h-5"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">発注ステータスが変わった時</p>
+                        <p className="text-sm text-muted-foreground">印刷発注の進捗通知</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={currentUser?.notificationPrefs?.order_status_email || false}
+                        onChange={async (e) => {
+                          const newPrefs = {
+                            ...currentUser?.notificationPrefs,
+                            order_status_email: e.target.checked,
+                          }
+                          await fetch('/api/me', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notification_prefs: newPrefs }),
+                          })
+                          if (currentUser) {
+                            setCurrentUser({ ...currentUser, notificationPrefs: newPrefs as typeof currentUser.notificationPrefs })
+                          }
+                        }}
+                        className="w-5 h-5"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">営業薄企業アラート（週次）</p>
+                        <p className="text-sm text-muted-foreground">連絡頻度が低い顧客の週次サマリ</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={currentUser?.notificationPrefs?.cold_customer_weekly || false}
+                        onChange={async (e) => {
+                          const newPrefs = {
+                            ...currentUser?.notificationPrefs,
+                            cold_customer_weekly: e.target.checked,
+                          }
+                          await fetch('/api/me', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notification_prefs: newPrefs }),
+                          })
+                          if (currentUser) {
+                            setCurrentUser({ ...currentUser, notificationPrefs: newPrefs as typeof currentUser.notificationPrefs })
+                          }
+                        }}
+                        className="w-5 h-5"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* 危険ゾーン */}
+                <Card className="border-destructive/50">
+                  <CardHeader>
+                    <CardTitle className="text-destructive">危険ゾーン</CardTitle>
+                    <CardDescription>これらの操作は元に戻せません</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-muted-foreground text-sm">アカウント設定は準備中です</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">アカウントを退会</p>
+                        <p className="text-sm text-muted-foreground">
+                          退会後はログインできなくなります。データは保持されます。
+                        </p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        onClick={async () => {
+                          if (!confirm('本当に退会しますか？この操作は取り消せません。')) return
+                          if (!confirm('最終確認：退会するとログインできなくなります。よろしいですか？')) return
+                          const res = await fetch('/api/me/delete', { method: 'POST' })
+                          if (res.ok) {
+                            window.location.href = '/login?message=account_suspended'
+                          } else {
+                            alert('退会処理に失敗しました')
+                          }
+                        }}
+                      >
+                        退会する
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>

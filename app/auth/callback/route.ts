@@ -34,6 +34,26 @@ export async function GET(request: NextRequest) {
       })
       .eq('email', user.email.toLowerCase())
       .is('auth_user_id', null)
+
+    // ログイン履歴を記録
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('email', user.email.toLowerCase())
+      .single()
+
+    if (employee) {
+      const forwardedFor = request.headers.get('x-forwarded-for')
+      const ip = forwardedFor?.split(',')[0]?.trim() || null
+      const userAgent = request.headers.get('user-agent') || null
+
+      await supabase.from('login_events').insert({
+        employee_id: employee.id,
+        ip_address: ip,
+        user_agent: userAgent,
+        method: 'google_oauth',
+      })
+    }
   }
 
   return NextResponse.redirect(new URL(next, url.origin))
