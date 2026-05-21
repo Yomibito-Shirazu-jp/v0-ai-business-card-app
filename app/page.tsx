@@ -110,6 +110,7 @@ const sidebarNav = [
   { name: "スキャン", icon: ScanLine, href: "#", active: false, view: "scan" },
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
+  { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
 ]
 
@@ -254,6 +255,38 @@ export default function BusinessCardApp() {
     position: '',
   })
   const [isSavingProfile, setIsSavingProfile] = useState(false)
+
+  // 社員一覧
+  const [employees, setEmployees] = useState<Array<{
+    id: string
+    email: string
+    display_name: string | null
+    display_name_kana: string | null
+    department: string | null
+    position: string | null
+    phone: string | null
+    mobile: string | null
+    role: string
+    status: string
+    invited_at: string
+    activated_at: string | null
+    staff_id: string | null
+  }>>([])
+  const [employeesLoading, setEmployeesLoading] = useState(false)
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    display_name: '',
+    display_name_kana: '',
+    department: '',
+    position: '',
+    role: 'member',
+    phone: '',
+    mobile: '',
+    staff_id: '',
+  })
+  const [isInviting, setIsInviting] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState<string | null>(null)
   
   useEffect(() => {
     const fetchUser = async () => {
@@ -305,6 +338,84 @@ export default function BusinessCardApp() {
     fetchGoogleScopes()
     fetchLoginEvents()
   }, [])
+
+  // 社員一覧取得
+  const fetchEmployees = useCallback(async () => {
+    setEmployeesLoading(true)
+    try {
+      const res = await fetch('/api/employees')
+      if (res.ok) {
+        const data = await res.json()
+        setEmployees(data.data || [])
+      }
+    } catch {
+      // エラー時は無視
+    } finally {
+      setEmployeesLoading(false)
+    }
+  }, [])
+
+  // 社員管理ビュー表示時に取得
+  useEffect(() => {
+    if (currentView === 'employees') {
+      fetchEmployees()
+    }
+  }, [currentView, fetchEmployees])
+
+  // 社員招待
+  const handleInviteEmployee = async () => {
+    if (!inviteForm.email) return
+    setIsInviting(true)
+    try {
+      const res = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inviteForm),
+      })
+      const result = await res.json()
+      if (result.success) {
+        setIsInviteDialogOpen(false)
+        setInviteForm({
+          email: '', display_name: '', display_name_kana: '', department: '',
+          position: '', role: 'member', phone: '', mobile: '', staff_id: '',
+        })
+        fetchEmployees()
+      } else {
+        alert(result.error || '招待に失敗しました')
+      }
+    } catch {
+      alert('招待に失敗しました')
+    } finally {
+      setIsInviting(false)
+    }
+  }
+
+  // 社員ステータス変更
+  const handleUpdateEmployeeStatus = async (employeeId: string, status: string) => {
+    const res = await fetch(`/api/employees/${employeeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    if (res.ok) {
+      fetchEmployees()
+    } else {
+      const result = await res.json()
+      alert(result.error || '更新に失敗しました')
+    }
+  }
+
+  // 社員削除
+  const handleDeleteEmployee = async (employeeId: string, name: string) => {
+    if (!confirm(`${name || 'この社員'}を削除しますか？この操作は取り消せません。`)) return
+    const res = await fetch(`/api/employees/${employeeId}`, { method: 'DELETE' })
+    if (res.ok) {
+      fetchEmployees()
+    } else {
+      const result = await res.json()
+      alert(result.error || '削除に失敗しました')
+    }
+  }
 
   // ネットワークデータを名刺から動的生成
   const networkNodes = useMemo(() => generateNetworkNodes(cards), [cards])
@@ -1067,6 +1178,242 @@ export default function BusinessCardApp() {
             </div>
           )}
 
+          {/* 社員管理ビュー */}
+          {currentView === "employees" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="max-w-5xl space-y-6">
+                {/* ヘッダー */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">社員管理</h2>
+                    <p className="text-muted-foreground">社員の招待・管理ができます</p>
+                  </div>
+                  {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && (
+                    <Button onClick={() => setIsInviteDialogOpen(true)}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      社員を招待
+                    </Button>
+                  )}
+                </div>
+
+                {/* 統計 */}
+                <div className="grid grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.length}</div>
+                      <p className="text-xs text-muted-foreground">総社員数</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.filter(e => e.status === 'active').length}</div>
+                      <p className="text-xs text-muted-foreground">アクティブ</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.filter(e => e.status === 'invited').length}</div>
+                      <p className="text-xs text-muted-foreground">招待中</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.filter(e => e.status === 'suspended').length}</div>
+                      <p className="text-xs text-muted-foreground">停止中</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* 社員リスト */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>社員一覧</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {employeesLoading ? (
+                      <p className="text-muted-foreground text-center py-8">読み込み中...</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-3 px-2">氏名</th>
+                              <th className="text-left py-3 px-2">メール</th>
+                              <th className="text-left py-3 px-2">部署</th>
+                              <th className="text-left py-3 px-2">役職</th>
+                              <th className="text-left py-3 px-2">権限</th>
+                              <th className="text-left py-3 px-2">ステータス</th>
+                              <th className="text-left py-3 px-2">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {employees.map((emp) => (
+                              <tr key={emp.id} className="border-b hover:bg-muted/50">
+                                <td className="py-3 px-2">
+                                  <div>
+                                    <p className="font-medium">{emp.display_name || '未設定'}</p>
+                                    {emp.display_name_kana && (
+                                      <p className="text-xs text-muted-foreground">{emp.display_name_kana}</p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-2 text-muted-foreground">{emp.email}</td>
+                                <td className="py-3 px-2">{emp.department || '-'}</td>
+                                <td className="py-3 px-2">{emp.position || '-'}</td>
+                                <td className="py-3 px-2">
+                                  <Badge variant={emp.role === 'owner' ? 'default' : emp.role === 'admin' ? 'secondary' : 'outline'}>
+                                    {emp.role === 'owner' ? 'オーナー' : emp.role === 'admin' ? '管理者' : 'メンバー'}
+                                  </Badge>
+                                </td>
+                                <td className="py-3 px-2">
+                                  <Badge variant={emp.status === 'active' ? 'default' : emp.status === 'invited' ? 'secondary' : 'destructive'}>
+                                    {emp.status === 'active' ? 'アクティブ' : emp.status === 'invited' ? '招待中' : '停止中'}
+                                  </Badge>
+                                </td>
+                                <td className="py-3 px-2">
+                                  {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && emp.role !== 'owner' && (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm">
+                                          <MoreHorizontal className="w-4 h-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        {emp.status === 'active' && (
+                                          <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'suspended')}>
+                                            アカウント停止
+                                          </DropdownMenuItem>
+                                        )}
+                                        {emp.status === 'suspended' && (
+                                          <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'active')}>
+                                            アカウント復活
+                                          </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-destructive"
+                                          onClick={() => handleDeleteEmployee(emp.id, emp.display_name || '')}
+                                        >
+                                          削除
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* 招待ダイアログ */}
+                <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>社員を招待</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+                      <div>
+                        <label className="text-sm font-medium">メールアドレス *</label>
+                        <Input
+                          type="email"
+                          value={inviteForm.email}
+                          onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="example@company.co.jp"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">氏名</label>
+                          <Input
+                            value={inviteForm.display_name}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, display_name: e.target.value }))}
+                            placeholder="山田 太郎"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">フリガナ</label>
+                          <Input
+                            value={inviteForm.display_name_kana}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                            placeholder="ヤマダ タロウ"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">部署</label>
+                          <Input
+                            value={inviteForm.department}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, department: e.target.value }))}
+                            placeholder="営業部"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">役職</label>
+                          <Input
+                            value={inviteForm.position}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, position: e.target.value }))}
+                            placeholder="部長"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">電話番号</label>
+                          <Input
+                            value={inviteForm.phone}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="03-1234-5678"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">携帯電話</label>
+                          <Input
+                            value={inviteForm.mobile}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, mobile: e.target.value }))}
+                            placeholder="090-1234-5678"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">社員番号</label>
+                          <Input
+                            value={inviteForm.staff_id}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, staff_id: e.target.value }))}
+                            placeholder="EMP001"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">権限</label>
+                          <select
+                            className="w-full p-2 border rounded-md bg-background"
+                            value={inviteForm.role}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, role: e.target.value }))}
+                          >
+                            <option value="member">メンバー</option>
+                            <option value="admin">管理者</option>
+                            {currentUser?.role === 'owner' && <option value="owner">オーナー</option>}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setIsInviteDialogOpen(false)}>キャンセル</Button>
+                      <Button onClick={handleInviteEmployee} disabled={!inviteForm.email || isInviting}>
+                        {isInviting ? '招待中...' : '招待する'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          )}
+
           {/* 設定ビュー */}
           {currentView === "settings" && (
             <div className="flex-1 p-6 overflow-auto">
@@ -1172,7 +1519,7 @@ export default function BusinessCardApp() {
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium">氏名</label>
+                        <label className="text-sm font-medium">��名</label>
                         <Input
                           value={profileForm.display_name}
                           onChange={(e) => setProfileForm(prev => ({ ...prev, display_name: e.target.value }))}
