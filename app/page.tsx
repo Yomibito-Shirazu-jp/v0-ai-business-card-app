@@ -46,7 +46,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
@@ -575,6 +575,234 @@ export default function BusinessCardApp() {
                   if (card) setSelectedCard(card)
                 }}
               />
+            </div>
+          )}
+
+          {/* ダッシュボードビュー */}
+          {currentView === "dashboard" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">総名刺数</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{cards.length.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground mt-1">登録済み名刺</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">お気に入り</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{cards.filter(c => c.isFavorite).length.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground mt-1">重要コンタクト</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">会社数</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{new Set(cards.map(c => c.company).filter(Boolean)).size.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground mt-1">ユニーク企業</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">今月追加</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {cards.filter(c => {
+                        const now = new Date()
+                        return c.createdAt.getMonth() === now.getMonth() && c.createdAt.getFullYear() === now.getFullYear()
+                      }).length.toLocaleString()}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">新規登録</p>
+                  </CardContent>
+                </Card>
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>最近追加した名刺</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {cards.slice(0, 10).map(card => (
+                      <div key={card.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm">{card.name.slice(0, 2)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{card.name}</p>
+                          <p className="text-sm text-muted-foreground truncate">{card.company}</p>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{card.createdAt.toLocaleDateString('ja-JP')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* タグ管理ビュー */}
+          {currentView === "tags" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <Card>
+                <CardHeader>
+                  <CardTitle>タグ一覧</CardTitle>
+                  <CardDescription>名刺に付けられたタグの管理</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {allTags.map(tag => {
+                      const count = cards.filter(c => c.tags.includes(tag)).length
+                      return (
+                        <Badge key={tag} variant="secondary" className="text-sm px-3 py-1.5">
+                          {tag} <span className="ml-2 text-muted-foreground">({count})</span>
+                        </Badge>
+                      )
+                    })}
+                    {allTags.length === 0 && (
+                      <p className="text-muted-foreground">タグがありません</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* 分析ビュー */}
+          {currentView === "analytics" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>業種別分布</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {Object.entries(
+                        cards.reduce((acc, card) => {
+                          const company = card.company || '不明'
+                          acc[company] = (acc[company] || 0) + 1
+                          return acc
+                        }, {} as Record<string, number>)
+                      )
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10)
+                        .map(([company, count]) => (
+                          <div key={company} className="flex items-center justify-between">
+                            <span className="text-sm truncate flex-1">{company}</span>
+                            <span className="text-sm font-medium ml-4">{count}名</span>
+                          </div>
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>登録推移</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground text-sm">総登録数: {cards.length.toLocaleString()}件</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* 設定ビュー */}
+          {currentView === "settings" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="max-w-2xl space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Google Workspace 連携</CardTitle>
+                    <CardDescription>Google サービスとの連携設定</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {gwsIntegrations.map(item => (
+                      <div key={item.name} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-5 h-5" />
+                          <span>{item.name}</span>
+                        </div>
+                        <Badge variant={item.connected ? "default" : "secondary"}>
+                          {item.connected ? "接続済み" : "未接続"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>アカウント設定</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground text-sm">アカウント設定は準備中です</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* スキャンビュー */}
+          {currentView === "scan" && (
+            <div className="flex-1 p-6 overflow-auto flex items-center justify-center">
+              <Card className="max-w-md w-full">
+                <CardHeader className="text-center">
+                  <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
+                  <CardTitle>AI 名刺スキャン</CardTitle>
+                  <CardDescription>名刺をカメラまたはファイルからスキャンしてください</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*"
+                  />
+                  {scanError && (
+                    <div className="p-3 mb-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+                      {scanError}
+                    </div>
+                  )}
+                  {isScanning ? (
+                    <div className="space-y-4">
+                      <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
+                        <div className="text-center">
+                          <Sparkles className="w-8 h-8 text-primary mx-auto mb-2 animate-pulse" />
+                          <p className="text-sm text-muted-foreground">AI が名刺を解析中...</p>
+                        </div>
+                      </div>
+                      <Progress value={scanProgress} className="h-2" />
+                      <p className="text-xs text-center text-muted-foreground">{scanStatus || `処理中... ${scanProgress}%`}</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={handleCameraCapture}
+                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <Camera className="w-8 h-8 text-muted-foreground" />
+                        <span className="text-sm font-medium">カメラで撮影</span>
+                      </button>
+                      <button
+                        onClick={handleFileUpload}
+                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                        <span className="text-sm font-medium">ファイルを選択</span>
+                      </button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 
