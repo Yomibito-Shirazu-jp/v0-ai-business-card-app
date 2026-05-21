@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import {
   Search,
   Plus,
@@ -93,88 +93,6 @@ interface BusinessCard {
   syncedToGoogle: boolean
 }
 
-// サンプルデータ
-const sampleCards: BusinessCard[] = [
-  {
-    id: "1",
-    name: "田中 太郎",
-    nameKana: "タナカ タロウ",
-    company: "株式会社テクノロジー",
-    department: "営業部",
-    position: "部長",
-    email: "tanaka@technology.co.jp",
-    phone: "03-1234-5678",
-    mobile: "090-1234-5678",
-    address: "東京都渋谷区神宮前1-2-3",
-    website: "https://technology.co.jp",
-    linkedin: "tanaka-taro",
-    tags: ["重要顧客", "IT", "営業"],
-    isFavorite: true,
-    createdAt: new Date("2024-01-15"),
-    lastContactedAt: new Date("2024-03-10"),
-    syncedToGoogle: true,
-  },
-  {
-    id: "2",
-    name: "佐藤 花子",
-    nameKana: "サトウ ハナコ",
-    company: "デザインスタジオ ABC",
-    department: "クリエイティブ部",
-    position: "ディレクター",
-    email: "sato@abc-design.jp",
-    phone: "06-9876-5432",
-    tags: ["デザイン", "パートナー"],
-    isFavorite: false,
-    createdAt: new Date("2024-02-20"),
-    syncedToGoogle: true,
-  },
-  {
-    id: "3",
-    name: "山田 一郎",
-    nameKana: "ヤマダ イチロウ",
-    company: "グローバルコンサルティング",
-    department: "戦略企画室",
-    position: "マネージャー",
-    email: "yamada@global-consulting.com",
-    phone: "03-5555-1234",
-    mobile: "080-5555-1234",
-    address: "東京都港区六本木4-5-6",
-    tags: ["コンサル", "戦略"],
-    isFavorite: true,
-    createdAt: new Date("2024-01-05"),
-    lastContactedAt: new Date("2024-03-15"),
-    syncedToGoogle: false,
-  },
-  {
-    id: "4",
-    name: "鈴木 美咲",
-    nameKana: "スズキ ミサキ",
-    company: "フィンテック株式会社",
-    department: "プロダクト開発",
-    position: "プロダクトマネージャー",
-    email: "suzuki@fintech.co.jp",
-    phone: "03-7777-8888",
-    tags: ["フィンテック", "スタートアップ"],
-    isFavorite: false,
-    createdAt: new Date("2024-03-01"),
-    syncedToGoogle: true,
-  },
-  {
-    id: "5",
-    name: "高橋 健太",
-    nameKana: "タカハシ ケンタ",
-    company: "メディアネットワーク",
-    department: "広報部",
-    position: "広報担当",
-    email: "takahashi@media-network.jp",
-    phone: "03-2222-3333",
-    tags: ["メディア", "広報"],
-    isFavorite: false,
-    createdAt: new Date("2024-02-10"),
-    syncedToGoogle: true,
-  },
-]
-
 // ネットワークデータ
 const networkNodes = [
   { id: "1", name: "田中 太郎", company: "テクノロジー", position: "部長", influence: 85, connections: 12, tags: ["IT", "営業"], group: "IT" },
@@ -229,7 +147,9 @@ const sidebarNav = [
 ]
 
 export default function BusinessCardApp() {
-  const [cards, setCards] = useState<BusinessCard[]>(sampleCards)
+  const [cards, setCards] = useState<BusinessCard[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null)
@@ -237,7 +157,200 @@ export default function BusinessCardApp() {
   const [isScanDialogOpen, setIsScanDialogOpen] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
+  const [scanStatus, setScanStatus] = useState<string>("")
+  const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Supabaseから名刺データを取得
+  const fetchCards = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const response = await fetch('/api/business-cards')
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'データ取得に失敗しました')
+      }
+      
+      const loadedCards: BusinessCard[] = result.data.map((row: {
+        id: string
+        full_name: string | null
+        full_name_kana: string | null
+        company_name: string | null
+        department: string | null
+        position: string | null
+        email: string | null
+        phone: string | null
+        mobile: string | null
+        address: string | null
+        website: string | null
+        linkedin: string | null
+        twitter: string | null
+        notes: string | null
+        tags: string[] | null
+        is_favorite: boolean | null
+        created_at: string
+        last_contacted_at: string | null
+        image_url: string | null
+      }) => ({
+        id: row.id,
+        name: row.full_name || "不明",
+        nameKana: row.full_name_kana || "",
+        company: row.company_name || "",
+        department: row.department || "",
+        position: row.position || "",
+        email: row.email || "",
+        phone: row.phone || "",
+        mobile: row.mobile || "",
+        address: row.address || "",
+        website: row.website || "",
+        linkedin: row.linkedin || "",
+        twitter: row.twitter || "",
+        notes: row.notes || "",
+        tags: row.tags || [],
+        isFavorite: row.is_favorite || false,
+        createdAt: new Date(row.created_at),
+        lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at) : undefined,
+        imageUrl: row.image_url || "",
+        syncedToGoogle: false,
+      }))
+      
+      setCards(loadedCards)
+    } catch (error) {
+      console.error('データ取得エラー:', error)
+      setLoadError(error instanceof Error ? error.message : 'データ取得に失敗しました')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // 初回ロード
+  useEffect(() => {
+    fetchCards()
+  }, [fetchCards])
+
+  // 画像をBase64に変換
+  const imageToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // OCR実行 → DB保存
+  const processBusinessCard = useCallback(async (imageBase64: string) => {
+    setIsScanning(true)
+    setScanProgress(10)
+    setScanStatus("OCR解析中...")
+    setScanError(null)
+
+    try {
+      // OCR API呼び出し
+      setScanProgress(30)
+      const ocrResponse = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 }),
+      })
+
+      if (!ocrResponse.ok) {
+        throw new Error('OCR処理に失敗しました')
+      }
+
+      const ocrResult = await ocrResponse.json()
+      setScanProgress(60)
+      setScanStatus("データ保存中...")
+
+      // DB保存 API呼び出し
+      const saveResponse = await fetch('/api/business-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ocrResult, imageUrl: imageBase64 }),
+      })
+
+      const saveResult = await saveResponse.json()
+      setScanProgress(90)
+
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || '保存に失敗しました')
+      }
+
+      // UIに反映
+      const newCard: BusinessCard = {
+        id: saveResult.data.id,
+        name: saveResult.data.full_name || "不明",
+        nameKana: saveResult.data.full_name_kana || "",
+        company: saveResult.data.company_name || "",
+        department: saveResult.data.department || "",
+        position: saveResult.data.position || "",
+        email: saveResult.data.email || "",
+        phone: saveResult.data.phone || "",
+        mobile: saveResult.data.mobile || "",
+        address: saveResult.data.address || "",
+        website: saveResult.data.website || "",
+        linkedin: saveResult.data.linkedin || "",
+        twitter: saveResult.data.twitter || "",
+        notes: saveResult.data.notes || "",
+        tags: saveResult.data.tags || [],
+        isFavorite: saveResult.data.is_favorite || false,
+        createdAt: new Date(saveResult.data.created_at),
+        imageUrl: saveResult.data.image_url || "",
+        syncedToGoogle: false,
+      }
+
+      setCards(prev => [newCard, ...prev])
+      setScanProgress(100)
+      setScanStatus("完了!")
+
+      setTimeout(() => {
+        setIsScanDialogOpen(false)
+        setIsScanning(false)
+        setScanProgress(0)
+        setScanStatus("")
+      }, 1000)
+
+    } catch (error) {
+      console.error('処理エラー:', error)
+      setScanError(error instanceof Error ? error.message : '処理に失敗しました')
+      setIsScanning(false)
+    }
+  }, [])
+
+  // ファイル選択ハンドラ
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const base64 = await imageToBase64(file)
+      await processBusinessCard(base64)
+    } catch (error) {
+      console.error('ファイル読み込みエラー:', error)
+      setScanError('ファイルの読み込みに失敗しました')
+    }
+  }, [processBusinessCard])
+
+  // カメラ起動
+  const handleCameraCapture = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = "image/*"
+      fileInputRef.current.capture = "environment"
+      fileInputRef.current.click()
+    }
+  }, [])
+
+  // ファイル選択起動
+  const handleFileUpload = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.removeAttribute('capture')
+      fileInputRef.current.accept = "image/*"
+      fileInputRef.current.click()
+    }
+  }, [])
 
   // 全タグを取得
   const allTags = Array.from(new Set(cards.flatMap((card) => card.tags)))
@@ -258,23 +371,6 @@ export default function BusinessCardApp() {
   // お気に入り切り替え
   const toggleFavorite = (id: string) => {
     setCards(cards.map((card) => (card.id === id ? { ...card, isFavorite: !card.isFavorite } : card)))
-  }
-
-  // スキャンシミュレーション
-  const handleScan = () => {
-    setIsScanning(true)
-    setScanProgress(0)
-    const interval = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setIsScanning(false)
-          setIsScanDialogOpen(false)
-          return 100
-        }
-        return prev + 10
-      })
-    }, 200)
   }
 
   return (
@@ -416,6 +512,21 @@ export default function BusinessCardApp() {
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
+                    {/* 隠しファイル入力 */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      accept="image/*"
+                    />
+                    
+                    {scanError && (
+                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+                        {scanError}
+                      </div>
+                    )}
+                    
                     {isScanning ? (
                       <div className="space-y-4">
                         <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
@@ -426,20 +537,20 @@ export default function BusinessCardApp() {
                         </div>
                         <Progress value={scanProgress} className="h-2" />
                         <p className="text-xs text-center text-muted-foreground">
-                          OCR処理中... {scanProgress}%
+                          {scanStatus || `処理中... ${scanProgress}%`}
                         </p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
                         <button
-                          onClick={handleScan}
+                          onClick={handleCameraCapture}
                           className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
                         >
                           <Camera className="w-8 h-8 text-muted-foreground" />
                           <span className="text-sm font-medium">カメラで撮影</span>
                         </button>
                         <button
-                          onClick={handleScan}
+                          onClick={handleFileUpload}
                           className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
                         >
                           <Upload className="w-8 h-8 text-muted-foreground" />
