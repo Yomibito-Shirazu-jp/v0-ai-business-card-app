@@ -112,67 +112,7 @@ const sidebarNav = [
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
 ]
 
-// 名刺データからネットワークノードを生成
-function generateNetworkNodes(cards: BusinessCard[]) {
-  return cards.slice(0, 100).map((card, index) => ({
-    id: card.id,
-    name: card.name,
-    company: card.company || "不明",
-    position: card.position || "",
-    influence: Math.floor(Math.random() * 40) + 60,
-    connections: Math.floor(Math.random() * 15) + 1,
-    tags: card.tags || [],
-    group: card.tags?.[0] || "その他",
-  }))
-}
-
-// ネットワークリンクを生成（同じ会社、同じタグで関連付け）
-function generateNetworkLinks(cards: BusinessCard[]) {
-  const links: { source: string; target: string; strength: number; type: "business" | "referral" | "meeting" | "project" }[] = []
-  const limitedCards = cards.slice(0, 100)
-  
-  for (let i = 0; i < limitedCards.length; i++) {
-    for (let j = i + 1; j < limitedCards.length; j++) {
-      const cardA = limitedCards[i]
-      const cardB = limitedCards[j]
-      
-      // 同じ会社なら強い関係
-      if (cardA.company && cardB.company && cardA.company === cardB.company) {
-        links.push({
-          source: cardA.id,
-          target: cardB.id,
-          strength: 9,
-          type: "business"
-        })
-        continue
-      }
-      
-      // 同じタグがあれば関係
-      const sharedTags = cardA.tags?.filter(t => cardB.tags?.includes(t)) || []
-      if (sharedTags.length > 0) {
-        links.push({
-          source: cardA.id,
-          target: cardB.id,
-          strength: Math.min(sharedTags.length * 3, 8),
-          type: "project"
-        })
-        continue
-      }
-      
-      // ランダムで一部関係を作成
-      if (Math.random() < 0.02) {
-        links.push({
-          source: cardA.id,
-          target: cardB.id,
-          strength: Math.floor(Math.random() * 5) + 3,
-          type: ["meeting", "referral"][Math.floor(Math.random() * 2)] as "meeting" | "referral"
-        })
-      }
-    }
-  }
-  
-  return links.slice(0, 200) // 最大200リンク
-}
+// ネットワークノード/リンク生成は廃止（NetworkGraph 内で /api/analytics/network から取得）
 
 export default function BusinessCardApp() {
   const [cards, setCards] = useState<BusinessCard[]>([])
@@ -426,9 +366,7 @@ export default function BusinessCardApp() {
     }
   }
 
-  // ネットワークデータを名刺から動的生成
-  const networkNodes = useMemo(() => generateNetworkNodes(cards), [cards])
-  const networkLinks = useMemo(() => generateNetworkLinks(cards), [cards])
+  // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
   // Supabaseから名刺データを���得（ページネーション対応）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
@@ -1036,7 +974,6 @@ export default function BusinessCardApp() {
             </div>
           </header>
 
-          {/* ネットワーク分析ビュー */}
           {/* ダッシュボードビュー */}
           {currentView === "dashboard" && (
             <div className="flex-1 p-6 overflow-auto">
@@ -1158,14 +1095,14 @@ export default function BusinessCardApp() {
                   </Card>
                 </TabsContent>
 
-                {/* タブ2: 人脈ネットワーク（旧/network ビューから移植） */}
+                {/* タブ2: 人脈ネットワーク（実DBデータをAPIから取得） */}
                 <TabsContent value="network" className="mt-6">
                   <div className="h-[calc(100vh-220px)] min-h-[500px]">
                     <NetworkGraph
-                      nodes={networkNodes}
-                      links={networkLinks}
-                      onNodeClick={(node) => {
-                        const card = cards.find((c) => c.id === node.id)
+                      onNodeClick={(nodeId, nodeType) => {
+                        if (nodeType !== "business_card") return
+                        const cardId = nodeId.replace(/^card_/, "")
+                        const card = cards.find((c) => c.id === cardId)
                         if (card) setSelectedCard(card)
                       }}
                     />
