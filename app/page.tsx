@@ -40,7 +40,6 @@ import {
   Globe,
   Linkedin,
   Twitter,
-  Network,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -106,7 +105,6 @@ const GOOGLE_SERVICES = [
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
   { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
-  { name: "ネットワーク分析", icon: Network, href: "#", active: false, view: "network" },
   { name: "スキャン", icon: ScanLine, href: "#", active: false, view: "scan" },
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
@@ -190,6 +188,17 @@ export default function BusinessCardApp() {
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
+  const [analyticsTab, setAnalyticsTab] = useState<string>("overview")
+
+  // URL クエリで初期ビュー/タブを反映（/network → analytics?tab=network のリダイレクト先など）
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const view = params.get("view")
+    const tab = params.get("tab")
+    if (view) setCurrentView(view)
+    if (tab) setAnalyticsTab(tab)
+  }, [])
   const [page, setPage] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(true)
@@ -819,11 +828,11 @@ export default function BusinessCardApp() {
             <div className="flex items-center gap-4">
               <h2 className="text-xl font-semibold">
                 {currentView === "cards" && "名刺一覧"}
-                {currentView === "network" && "ネットワーク分析"}
+                {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
                 {currentView === "scan" && "スキャン"}
                 {currentView === "tags" && "タグ管理"}
-                {currentView === "analytics" && "分析"}
+                {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
               </h2>
               {currentView === "cards" && (
@@ -1028,19 +1037,6 @@ export default function BusinessCardApp() {
           </header>
 
           {/* ネットワーク分析ビュー */}
-          {currentView === "network" && (
-            <div className="flex-1 p-6 overflow-hidden">
-              <NetworkGraph
-                nodes={networkNodes}
-                links={networkLinks}
-                onNodeClick={(node) => {
-                  const card = cards.find((c) => c.id === node.id)
-                  if (card) setSelectedCard(card)
-                }}
-              />
-            </div>
-          )}
-
           {/* ダッシュボードビュー */}
           {currentView === "dashboard" && (
             <div className="flex-1 p-6 overflow-auto">
@@ -1138,43 +1134,70 @@ export default function BusinessCardApp() {
             </div>
           )}
 
-          {/* 分析ビュー */}
+          {/* 分析ビュー（4タブ構成） */}
           {currentView === "analytics" && (
             <div className="flex-1 p-6 overflow-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>業種別分布</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {Object.entries(
-                        cards.reduce((acc, card) => {
-                          const company = card.company || '不明'
-                          acc[company] = (acc[company] || 0) + 1
-                          return acc
-                        }, {} as Record<string, number>)
-                      )
-                        .sort((a, b) => b[1] - a[1])
-                        .slice(0, 10)
-                        .map(([company, count]) => (
-                          <div key={company} className="flex items-center justify-between">
-                            <span className="text-sm truncate flex-1">{company}</span>
-                            <span className="text-sm font-medium ml-4">{count}名</span>
-                          </div>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>登録推移</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground text-sm">総登録数: {totalCount.toLocaleString()}件</p>
-                  </CardContent>
-                </Card>
-              </div>
+              <Tabs value={analyticsTab} onValueChange={setAnalyticsTab} className="w-full">
+                <TabsList className="grid w-full max-w-2xl grid-cols-4">
+                  <TabsTrigger value="overview">概要</TabsTrigger>
+                  <TabsTrigger value="network">人脈ネットワーク</TabsTrigger>
+                  <TabsTrigger value="contacts">顧客連絡頻度</TabsTrigger>
+                  <TabsTrigger value="cold">営業薄企業</TabsTrigger>
+                </TabsList>
+
+                {/* タブ1: 概要 */}
+                <TabsContent value="overview" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>概要</CardTitle>
+                      <CardDescription>各種KPIサマリ</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">Coming soon</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* タブ2: 人脈ネットワーク（旧/network ビューから移植） */}
+                <TabsContent value="network" className="mt-6">
+                  <div className="h-[calc(100vh-220px)] min-h-[500px]">
+                    <NetworkGraph
+                      nodes={networkNodes}
+                      links={networkLinks}
+                      onNodeClick={(node) => {
+                        const card = cards.find((c) => c.id === node.id)
+                        if (card) setSelectedCard(card)
+                      }}
+                    />
+                  </div>
+                </TabsContent>
+
+                {/* タブ3: 顧客連絡頻度 */}
+                <TabsContent value="contacts" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>顧客連絡頻度</CardTitle>
+                      <CardDescription>Gmail/Calendar連携による連絡履歴の頻度分析</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">Coming soon</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* タブ4: 営業薄企業 */}
+                <TabsContent value="cold" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>営業薄企業</CardTitle>
+                      <CardDescription>連絡が薄い企業の検出</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">Coming soon</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 
