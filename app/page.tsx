@@ -200,6 +200,24 @@ export default function BusinessCardApp() {
   })
   const pageSize = 50
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // ユーザー情報取得
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; plan: string } | null>(null)
+  
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/me')
+        if (res.ok) {
+          const data = await res.json()
+          setCurrentUser(data)
+        }
+      } catch {
+        // ログインしていない場合は無視
+      }
+    }
+    fetchUser()
+  }, [])
 
   // ネットワークデータを名刺から動的生成
   const networkNodes = useMemo(() => generateNetworkNodes(cards), [cards])
@@ -578,12 +596,13 @@ export default function BusinessCardApp() {
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors">
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src="/placeholder-user.jpg" />
-                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">山田</AvatarFallback>
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                      {currentUser?.name?.slice(0, 2) || "?"}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-sidebar-foreground">山田 太郎</p>
-                    <p className="text-xs text-muted-foreground">Pro プラン</p>
+                    <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
+                    <p className="text-xs text-muted-foreground">{currentUser?.plan || ""}</p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
@@ -593,12 +612,17 @@ export default function BusinessCardApp() {
                   <CircleUser className="w-4 h-4 mr-2" />
                   プロフィール
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setCurrentView("settings")}>
                   <Settings className="w-4 h-4 mr-2" />
                   設定
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">ログアウト</DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive" onClick={async () => {
+                  await fetch('/api/logout', { method: 'POST' })
+                  window.location.href = '/login'
+                }}>
+                  ログアウト
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
