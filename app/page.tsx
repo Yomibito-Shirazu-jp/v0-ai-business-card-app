@@ -252,8 +252,8 @@ export default function BusinessCardApp() {
                 <Briefcase className="w-5 h-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="font-bold text-lg text-sidebar-foreground">CardLink AI</h1>
-                <p className="text-xs text-muted-foreground">名刺管理</p>
+                <h1 className="font-bold text-lg text-sidebar-foreground">名刺Plus</h1>
+                <p className="text-xs text-muted-foreground">AI名刺管理</p>
               </div>
             </div>
           </div>

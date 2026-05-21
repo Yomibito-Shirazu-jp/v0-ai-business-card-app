@@ -20,8 +20,8 @@ const notoSansJP = Noto_Sans_JP({
 })
 
 export const metadata: Metadata = {
-  title: 'CardLink AI - AI名刺管理',
-  description: 'Google Workspace連携のAI名刺管理アプリ。日本企業・SOHO向けスマートビジネスツール。',
+  title: '名刺Plus - AI名刺管理',
+  description: 'Google Workspace完全連携のAI名刺管理アプリ。日本企業・SOHO向けスマートビジネスツール。',
   generator: 'v0.app',
   icons: {
     icon: [
