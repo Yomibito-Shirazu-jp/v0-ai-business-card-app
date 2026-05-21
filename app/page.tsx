@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import {
   Search,
   Plus,
@@ -41,12 +41,13 @@ import {
   Linkedin,
   Twitter,
   Network,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
@@ -93,46 +94,13 @@ interface BusinessCard {
   syncedToGoogle: boolean
 }
 
-// ネットワークデータ
-const networkNodes = [
-  { id: "1", name: "田中 太郎", company: "テクノロジー", position: "部長", influence: 85, connections: 12, tags: ["IT", "営業"], group: "IT" },
-  { id: "2", name: "佐藤 花子", company: "ABC Design", position: "ディレクター", influence: 72, connections: 8, tags: ["デザイン"], group: "デザイン" },
-  { id: "3", name: "山田 一郎", company: "グローバルコンサル", position: "マネージャー", influence: 90, connections: 15, tags: ["コンサル"], group: "コンサル" },
-  { id: "4", name: "鈴木 美咲", company: "フィンテック", position: "PM", influence: 65, connections: 6, tags: ["スタートアップ"], group: "IT" },
-  { id: "5", name: "高橋 健太", company: "メディアNW", position: "広報", influence: 55, connections: 5, tags: ["メディア"], group: "メディア" },
-  { id: "6", name: "渡辺 誠", company: "銀行", position: "次長", influence: 78, connections: 10, tags: ["金融"], group: "金融" },
-  { id: "7", name: "伊藤 真理", company: "商社", position: "課長", influence: 68, connections: 9, tags: ["商社"], group: "商社" },
-  { id: "8", name: "小林 大輔", company: "製造業", position: "部長", influence: 75, connections: 11, tags: ["製造"], group: "製造" },
-  { id: "9", name: "加藤 裕子", company: "広告代理店", position: "プランナー", influence: 62, connections: 7, tags: ["広告"], group: "メディア" },
-  { id: "10", name: "吉田 浩二", company: "VC", position: "パートナー", influence: 95, connections: 20, tags: ["投資"], group: "金融" },
-]
-
-const networkLinks = [
-  { source: "1", target: "2", strength: 7, type: "project" as const },
-  { source: "1", target: "3", strength: 9, type: "business" as const },
-  { source: "1", target: "4", strength: 5, type: "referral" as const },
-  { source: "2", target: "5", strength: 6, type: "project" as const },
-  { source: "2", target: "9", strength: 8, type: "business" as const },
-  { source: "3", target: "6", strength: 8, type: "business" as const },
-  { source: "3", target: "7", strength: 7, type: "meeting" as const },
-  { source: "3", target: "10", strength: 9, type: "business" as const },
-  { source: "4", target: "10", strength: 6, type: "referral" as const },
-  { source: "5", target: "9", strength: 5, type: "meeting" as const },
-  { source: "6", target: "7", strength: 4, type: "meeting" as const },
-  { source: "6", target: "10", strength: 8, type: "business" as const },
-  { source: "7", target: "8", strength: 6, type: "business" as const },
-  { source: "8", target: "1", strength: 5, type: "project" as const },
-  { source: "9", target: "5", strength: 7, type: "project" as const },
-  { source: "10", target: "1", strength: 4, type: "referral" as const },
-]
-
 // Google Workspace連携ステータス
 const gwsIntegrations = [
-  { name: "Google Contacts", status: "connected", icon: Users, lastSync: "5分前" },
-  { name: "Google Calendar", status: "connected", icon: Calendar, lastSync: "10分前" },
-  { name: "Gmail", status: "connected", icon: Mail, lastSync: "2分前" },
-  { name: "Google Drive", status: "connected", icon: FolderSync, lastSync: "15分前" },
-  { name: "Google Meet", status: "connected", icon: ExternalLink, lastSync: "即時" },
+  { name: "Google Contacts", status: "connected", icon: Users, lastSync: "5分前", connected: true },
+  { name: "Google Calendar", status: "connected", icon: Calendar, lastSync: "10分前", connected: true },
+  { name: "Gmail", status: "connected", icon: Mail, lastSync: "2分前", connected: true },
+  { name: "Google Drive", status: "connected", icon: FolderSync, lastSync: "15分前", connected: true },
+  { name: "Google Meet", status: "connected", icon: ExternalLink, lastSync: "即時", connected: true },
 ]
 
 // サイドバーナビゲーション
@@ -145,6 +113,68 @@ const sidebarNav = [
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
 ]
+
+// 名刺データからネットワークノードを生成
+function generateNetworkNodes(cards: BusinessCard[]) {
+  return cards.slice(0, 100).map((card, index) => ({
+    id: card.id,
+    name: card.name,
+    company: card.company || "不明",
+    position: card.position || "",
+    influence: Math.floor(Math.random() * 40) + 60,
+    connections: Math.floor(Math.random() * 15) + 1,
+    tags: card.tags || [],
+    group: card.tags?.[0] || "その他",
+  }))
+}
+
+// ネットワークリンクを生成（同じ会社、同じタグで関連付け）
+function generateNetworkLinks(cards: BusinessCard[]) {
+  const links: { source: string; target: string; strength: number; type: "business" | "referral" | "meeting" | "project" }[] = []
+  const limitedCards = cards.slice(0, 100)
+  
+  for (let i = 0; i < limitedCards.length; i++) {
+    for (let j = i + 1; j < limitedCards.length; j++) {
+      const cardA = limitedCards[i]
+      const cardB = limitedCards[j]
+      
+      // 同じ会社なら強い関係
+      if (cardA.company && cardB.company && cardA.company === cardB.company) {
+        links.push({
+          source: cardA.id,
+          target: cardB.id,
+          strength: 9,
+          type: "business"
+        })
+        continue
+      }
+      
+      // 同じタグがあれば関係
+      const sharedTags = cardA.tags?.filter(t => cardB.tags?.includes(t)) || []
+      if (sharedTags.length > 0) {
+        links.push({
+          source: cardA.id,
+          target: cardB.id,
+          strength: Math.min(sharedTags.length * 3, 8),
+          type: "project"
+        })
+        continue
+      }
+      
+      // ランダムで一部関係を作成
+      if (Math.random() < 0.02) {
+        links.push({
+          source: cardA.id,
+          target: cardB.id,
+          strength: Math.floor(Math.random() * 5) + 3,
+          type: ["meeting", "referral"][Math.floor(Math.random() * 2)] as "meeting" | "referral"
+        })
+      }
+    }
+  }
+  
+  return links.slice(0, 200) // 最大200リンク
+}
 
 export default function BusinessCardApp() {
   const [cards, setCards] = useState<BusinessCard[]>([])
@@ -160,14 +190,27 @@ export default function BusinessCardApp() {
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
+  const [page, setPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [newCardForm, setNewCardForm] = useState({
+    full_name: "", full_name_kana: "", company_name: "", department: "", position: "",
+    email: "", phone: "", mobile: "", address: "", website: "", notes: ""
+  })
+  const pageSize = 50
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Supabaseから名刺データを取得
-  const fetchCards = useCallback(async () => {
-    setIsLoading(true)
+  // ネットワークデータを名刺から動的生成
+  const networkNodes = useMemo(() => generateNetworkNodes(cards), [cards])
+  const networkLinks = useMemo(() => generateNetworkLinks(cards), [cards])
+
+  // Supabaseから名刺データを取得（ページネーション対応）
+  const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
+    if (!append) setIsLoading(true)
     setLoadError(null)
     try {
-      const response = await fetch('/api/business-cards')
+      const response = await fetch(`/api/business-cards?limit=${pageSize}&offset=${pageNum * pageSize}`)
       const result = await response.json()
       
       if (!result.success) {
@@ -217,7 +260,13 @@ export default function BusinessCardApp() {
         syncedToGoogle: false,
       }))
       
-      setCards(loadedCards)
+      if (append) {
+        setCards(prev => [...prev, ...loadedCards])
+      } else {
+        setCards(loadedCards)
+      }
+      setTotalCount(result.count || 0)
+      setHasMore(loadedCards.length === pageSize)
     } catch (error) {
       console.error('データ取得エラー:', error)
       setLoadError(error instanceof Error ? error.message : 'データ取得に失敗しました')
@@ -228,8 +277,15 @@ export default function BusinessCardApp() {
 
   // 初回ロード
   useEffect(() => {
-    fetchCards()
+    fetchCards(0, false)
   }, [fetchCards])
+
+  // もっと読み込む
+  const loadMore = useCallback(() => {
+    const nextPage = page + 1
+    setPage(nextPage)
+    fetchCards(nextPage, true)
+  }, [page, fetchCards])
 
   // 画像をBase64に変換
   const imageToBase64 = (file: File): Promise<string> => {
@@ -368,9 +424,97 @@ export default function BusinessCardApp() {
     return matchesSearch && matchesTags
   })
 
-  // お気に入り切り替え
-  const toggleFavorite = (id: string) => {
-    setCards(cards.map((card) => (card.id === id ? { ...card, isFavorite: !card.isFavorite } : card)))
+  // お気に入り切り替え（DB更新）
+  const toggleFavorite = async (id: string) => {
+    const card = cards.find(c => c.id === id)
+    if (!card) return
+    
+    const newFavorite = !card.isFavorite
+    // 楽観的更新
+    setCards(cards.map((c) => (c.id === id ? { ...c, isFavorite: newFavorite } : c)))
+    
+    try {
+      const response = await fetch(`/api/business-cards/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_favorite: newFavorite }),
+      })
+      if (!response.ok) {
+        // 失敗時はロールバック
+        setCards(cards.map((c) => (c.id === id ? { ...c, isFavorite: card.isFavorite } : c)))
+      }
+    } catch {
+      // 失敗時はロールバック
+      setCards(cards.map((c) => (c.id === id ? { ...c, isFavorite: card.isFavorite } : c)))
+    }
+  }
+
+  // 名刺削除
+  const deleteCard = async (id: string) => {
+    if (!confirm('この名刺を削除しますか？')) return
+    
+    const prevCards = [...cards]
+    setCards(cards.filter(c => c.id !== id))
+    setSelectedCard(null)
+    
+    try {
+      const response = await fetch(`/api/business-cards/${id}`, { method: 'DELETE' })
+      if (!response.ok) {
+        setCards(prevCards)
+        alert('削除に失敗しました')
+      }
+    } catch {
+      setCards(prevCards)
+      alert('削除に失敗しました')
+    }
+  }
+
+  // 手動で名刺追加
+  const handleAddCard = async () => {
+    try {
+      const response = await fetch('/api/business-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manualEntry: newCardForm }),
+      })
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || '追加に失敗しました')
+      }
+      
+      const newCard: BusinessCard = {
+        id: result.data.id,
+        name: result.data.full_name || "不明",
+        nameKana: result.data.full_name_kana || "",
+        company: result.data.company_name || "",
+        department: result.data.department || "",
+        position: result.data.position || "",
+        email: result.data.email || "",
+        phone: result.data.phone || "",
+        mobile: result.data.mobile || "",
+        address: result.data.address || "",
+        website: result.data.website || "",
+        linkedin: result.data.linkedin || "",
+        twitter: result.data.twitter || "",
+        notes: result.data.notes || "",
+        tags: result.data.tags || [],
+        isFavorite: false,
+        createdAt: new Date(result.data.created_at),
+        imageUrl: "",
+        syncedToGoogle: false,
+      }
+      
+      setCards(prev => [newCard, ...prev])
+      setTotalCount(prev => prev + 1)
+      setIsAddDialogOpen(false)
+      setNewCardForm({
+        full_name: "", full_name_kana: "", company_name: "", department: "", position: "",
+        email: "", phone: "", mobile: "", address: "", website: "", notes: ""
+      })
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '追加に失敗しました')
+    }
   }
 
   return (
@@ -476,7 +620,7 @@ export default function BusinessCardApp() {
               </h2>
               {currentView === "cards" && (
                 <Badge variant="secondary" className="text-xs">
-                  {filteredCards.length} 件
+                  {filteredCards.length} / {totalCount.toLocaleString()} 件
                 </Badge>
               )}
             </div>
@@ -561,6 +705,117 @@ export default function BusinessCardApp() {
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {/* 手動追加ダイアログ */}
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>名刺を手動追加</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">氏名 *</label>
+                        <Input
+                          value={newCardForm.full_name}
+                          onChange={(e) => setNewCardForm(prev => ({ ...prev, full_name: e.target.value }))}
+                          placeholder="山田 太郎"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">フリガナ</label>
+                        <Input
+                          value={newCardForm.full_name_kana}
+                          onChange={(e) => setNewCardForm(prev => ({ ...prev, full_name_kana: e.target.value }))}
+                          placeholder="ヤマダ タロウ"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">会社名</label>
+                      <Input
+                        value={newCardForm.company_name}
+                        onChange={(e) => setNewCardForm(prev => ({ ...prev, company_name: e.target.value }))}
+                        placeholder="株式会社〇〇"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">部署</label>
+                        <Input
+                          value={newCardForm.department}
+                          onChange={(e) => setNewCardForm(prev => ({ ...prev, department: e.target.value }))}
+                          placeholder="営業部"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">役職</label>
+                        <Input
+                          value={newCardForm.position}
+                          onChange={(e) => setNewCardForm(prev => ({ ...prev, position: e.target.value }))}
+                          placeholder="部長"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">メールアドレス</label>
+                      <Input
+                        type="email"
+                        value={newCardForm.email}
+                        onChange={(e) => setNewCardForm(prev => ({ ...prev, email: e.target.value }))}
+                        placeholder="example@company.co.jp"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">電話番号</label>
+                        <Input
+                          value={newCardForm.phone}
+                          onChange={(e) => setNewCardForm(prev => ({ ...prev, phone: e.target.value }))}
+                          placeholder="03-1234-5678"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">携帯電話</label>
+                        <Input
+                          value={newCardForm.mobile}
+                          onChange={(e) => setNewCardForm(prev => ({ ...prev, mobile: e.target.value }))}
+                          placeholder="090-1234-5678"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">住所</label>
+                      <Input
+                        value={newCardForm.address}
+                        onChange={(e) => setNewCardForm(prev => ({ ...prev, address: e.target.value }))}
+                        placeholder="東京都渋谷区..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Webサイト</label>
+                      <Input
+                        value={newCardForm.website}
+                        onChange={(e) => setNewCardForm(prev => ({ ...prev, website: e.target.value }))}
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">メモ</label>
+                      <textarea
+                        className="w-full p-2 border rounded-md bg-background text-sm min-h-[80px]"
+                        value={newCardForm.notes}
+                        onChange={(e) => setNewCardForm(prev => ({ ...prev, notes: e.target.value }))}
+                        placeholder="備考..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>キャンセル</Button>
+                    <Button onClick={handleAddCard} disabled={!newCardForm.full_name.trim()}>追加</Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </header>
 
@@ -575,6 +830,234 @@ export default function BusinessCardApp() {
                   if (card) setSelectedCard(card)
                 }}
               />
+            </div>
+          )}
+
+          {/* ダッシュボードビュー */}
+          {currentView === "dashboard" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">総名刺数</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{cards.length.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground mt-1">登録済み名刺</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">お気に入り</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{cards.filter(c => c.isFavorite).length.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground mt-1">重要コンタクト</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">会社数</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{new Set(cards.map(c => c.company).filter(Boolean)).size.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground mt-1">ユニーク企業</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">今月追加</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {cards.filter(c => {
+                        const now = new Date()
+                        return c.createdAt.getMonth() === now.getMonth() && c.createdAt.getFullYear() === now.getFullYear()
+                      }).length.toLocaleString()}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">新規登録</p>
+                  </CardContent>
+                </Card>
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>最近追加した名刺</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {cards.slice(0, 10).map(card => (
+                      <div key={card.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm">{card.name.slice(0, 2)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{card.name}</p>
+                          <p className="text-sm text-muted-foreground truncate">{card.company}</p>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{card.createdAt.toLocaleDateString('ja-JP')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* タグ管理ビュー */}
+          {currentView === "tags" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <Card>
+                <CardHeader>
+                  <CardTitle>タグ一覧</CardTitle>
+                  <CardDescription>名刺に付けられたタグの管理</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {allTags.map(tag => {
+                      const count = cards.filter(c => c.tags.includes(tag)).length
+                      return (
+                        <Badge key={tag} variant="secondary" className="text-sm px-3 py-1.5">
+                          {tag} <span className="ml-2 text-muted-foreground">({count})</span>
+                        </Badge>
+                      )
+                    })}
+                    {allTags.length === 0 && (
+                      <p className="text-muted-foreground">タグがありません</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* 分析ビュー */}
+          {currentView === "analytics" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>業種別分布</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {Object.entries(
+                        cards.reduce((acc, card) => {
+                          const company = card.company || '不明'
+                          acc[company] = (acc[company] || 0) + 1
+                          return acc
+                        }, {} as Record<string, number>)
+                      )
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10)
+                        .map(([company, count]) => (
+                          <div key={company} className="flex items-center justify-between">
+                            <span className="text-sm truncate flex-1">{company}</span>
+                            <span className="text-sm font-medium ml-4">{count}名</span>
+                          </div>
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>登録推移</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground text-sm">総登録数: {totalCount.toLocaleString()}件</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* 設定ビュー */}
+          {currentView === "settings" && (
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="max-w-2xl space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Google Workspace 連携</CardTitle>
+                    <CardDescription>Google サービスとの連携設定</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {gwsIntegrations.map(item => (
+                      <div key={item.name} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-5 h-5" />
+                          <span>{item.name}</span>
+                        </div>
+                        <Badge variant={item.connected ? "default" : "secondary"}>
+                          {item.connected ? "接続済み" : "未接続"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>アカウント設定</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground text-sm">アカウント設定は準備中です</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* スキャンビュー */}
+          {currentView === "scan" && (
+            <div className="flex-1 p-6 overflow-auto flex items-center justify-center">
+              <Card className="max-w-md w-full">
+                <CardHeader className="text-center">
+                  <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
+                  <CardTitle>AI 名刺スキャン</CardTitle>
+                  <CardDescription>名刺をカメラまたはファイルからスキャンしてください</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*"
+                  />
+                  {scanError && (
+                    <div className="p-3 mb-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+                      {scanError}
+                    </div>
+                  )}
+                  {isScanning ? (
+                    <div className="space-y-4">
+                      <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
+                        <div className="text-center">
+                          <Sparkles className="w-8 h-8 text-primary mx-auto mb-2 animate-pulse" />
+                          <p className="text-sm text-muted-foreground">AI が名刺を解析中...</p>
+                        </div>
+                      </div>
+                      <Progress value={scanProgress} className="h-2" />
+                      <p className="text-xs text-center text-muted-foreground">{scanStatus || `処理中... ${scanProgress}%`}</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={handleCameraCapture}
+                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <Camera className="w-8 h-8 text-muted-foreground" />
+                        <span className="text-sm font-medium">カメラで撮影</span>
+                      </button>
+                      <button
+                        onClick={handleFileUpload}
+                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                        <span className="text-sm font-medium">ファイルを選択</span>
+                      </button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 
@@ -660,7 +1143,7 @@ export default function BusinessCardApp() {
                 </div>
 
                 {/* 追加ボタン */}
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => setIsAddDialogOpen(true)}>
                   <Plus className="w-4 h-4" />
                   手動追加
                 </Button>
@@ -811,7 +1294,7 @@ export default function BusinessCardApp() {
                                   エクスポート
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive">
+                                <DropdownMenuItem className="text-destructive" onClick={() => deleteCard(card.id)}>
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   削除
                                 </DropdownMenuItem>
@@ -820,6 +1303,15 @@ export default function BusinessCardApp() {
                           </CardContent>
                         </Card>
                       ))}
+                    </div>
+                  )}
+                  
+                  {/* もっと読み込むボタン */}
+                  {hasMore && filteredCards.length > 0 && (
+                    <div className="flex justify-center py-4">
+                      <Button variant="outline" onClick={loadMore} disabled={isLoading}>
+                        {isLoading ? "読み込み中..." : `さらに読み込む（残り ${Math.max(0, totalCount - cards.length).toLocaleString()} 件）`}
+                      </Button>
                     </div>
                   )}
                 </ScrollArea>
@@ -843,13 +1335,26 @@ export default function BusinessCardApp() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => deleteCard(selectedCard.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>削除</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8"
                               onClick={() => setSelectedCard(null)}
                             >
-                              <ExternalLink className="w-4 h-4" />
+                              <X className="w-4 h-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>新しいタブで開く</TooltipContent>
+                          <TooltipContent>閉じる</TooltipContent>
                         </Tooltip>
                       </div>
                     </div>

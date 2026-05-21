@@ -40,6 +40,42 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    
+    // 手動入力の場合
+    if (body.manualEntry) {
+      const entry = body.manualEntry
+      const { data, error } = await supabase
+        .from('business_cards')
+        .insert({
+          user_id: user.id,
+          full_name: entry.full_name || null,
+          full_name_kana: entry.full_name_kana || null,
+          company_name: entry.company_name || null,
+          department: entry.department || null,
+          position: entry.position || null,
+          email: entry.email || null,
+          phone: entry.phone || null,
+          mobile: entry.mobile || null,
+          address: entry.address || null,
+          website: entry.website || null,
+          notes: entry.notes || null,
+          tags: [],
+          is_favorite: false,
+          relationship_strength: 50,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        return NextResponse.json(
+          { success: false, error: `保存に失敗しました: ${error.message}` },
+          { status: 500 }
+        )
+      }
+      return NextResponse.json({ success: true, data })
+    }
+
+    // OCR結果からの保存
     const ocrResult: OCRResult = body.ocrResult
     const imageUrl: string | undefined = body.imageUrl
     const isPrivate: boolean = body.isPrivate === true
