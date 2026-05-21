@@ -63,6 +63,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Menu } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -128,6 +130,8 @@ export default function BusinessCardApp() {
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
+  // モバイル: サイドバーを Drawer (Sheet) で開閉
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [analyticsTab, setAnalyticsTab] = useState<string>("overview")
 
   // URL クエリで初期ビュー/タブを反映（/network → analytics?tab=network のリダイレクト先など）
@@ -683,88 +687,120 @@ export default function BusinessCardApp() {
   return (
     <TooltipProvider>
       <div className="flex h-screen bg-background">
-        {/* サイドバー */}
-        <aside className="w-64 border-r border-border bg-sidebar flex flex-col">
-          {/* ロゴ */}
-          <div className="p-4 border-b border-sidebar-border">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-                <Briefcase className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="font-bold text-lg text-sidebar-foreground">名刺Plus</h1>
-                <p className="text-xs text-muted-foreground">AI名刺管理</p>
-              </div>
-            </div>
-          </div>
-
-          {/* ナビゲーション */}
-          <nav className="flex-1 p-3">
-            <ul className="space-y-1">
-              {sidebarNav.map((item) => (
-                <li key={item.name}>
-                  <button
-                    onClick={() => setCurrentView(item.view)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left ${
-                      currentView === item.view
-                        ? "bg-sidebar-accent text-sidebar-foreground font-medium"
-                        : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            {/* 設定へのリンク（Google連携はここでバッジ表示） */}
-          </nav>
-
-          {/* ユーザー */}
-          <div className="p-3 border-t border-sidebar-border">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                      {currentUser?.name?.slice(0, 2) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
-                    <p className="text-xs text-muted-foreground">{currentUser?.plan || ""}</p>
+        {/* サイドバー本体（デスクトップ＋モバイルで共有するコンテンツ） */}
+        {(() => {
+          const sidebarContent = (
+            <>
+              {/* ロゴ */}
+              <div className="p-4 border-b border-sidebar-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+                    <Briefcase className="w-5 h-5 text-primary-foreground" />
                   </div>
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem>
-                  <CircleUser className="w-4 h-4 mr-2" />
-                  プロフィール
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCurrentView("settings")}>
-                  <Settings className="w-4 h-4 mr-2" />
-                  設定
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" onClick={async () => {
-                  await fetch('/api/logout', { method: 'POST' })
-                  window.location.href = '/login'
-                }}>
-                  ログアウト
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </aside>
+                  <div>
+                    <h1 className="font-bold text-lg text-sidebar-foreground">名刺Plus</h1>
+                    <p className="text-xs text-muted-foreground">AI名刺管理</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ナビゲーション */}
+              <nav className="flex-1 p-3 overflow-y-auto">
+                <ul className="space-y-1">
+                  {sidebarNav.map((item) => (
+                    <li key={item.name}>
+                      <button
+                        onClick={() => {
+                          setCurrentView(item.view)
+                          setIsMobileNavOpen(false)
+                        }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left min-h-11 ${
+                          currentView === item.view
+                            ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+                            : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        {item.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+
+              {/* ユーザー */}
+              <div className="p-3 border-t border-sidebar-border">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors min-h-11">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {currentUser?.name?.slice(0, 2) || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
+                        <p className="text-xs text-muted-foreground">{currentUser?.plan || ""}</p>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem>
+                      <CircleUser className="w-4 h-4 mr-2" />
+                      プロフィール
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setCurrentView("settings"); setIsMobileNavOpen(false) }}>
+                      <Settings className="w-4 h-4 mr-2" />
+                      設定
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive" onClick={async () => {
+                      await fetch('/api/logout', { method: 'POST' })
+                      window.location.href = '/login'
+                    }}>
+                      ログアウト
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </>
+          )
+          return (
+            <>
+              {/* デスクトップ: 固定サイドバー */}
+              <aside className="hidden md:flex w-64 border-r border-border bg-sidebar flex-col">
+                {sidebarContent}
+              </aside>
+              {/* モバイル: Drawer (Sheet) */}
+              <Sheet open={isMobileNavOpen} onOpenChange={setIsMobileNavOpen}>
+                <SheetContent side="left" className="p-0 w-72 bg-sidebar flex flex-col [&>button]:hidden">
+                  <SheetHeader className="sr-only">
+                    <SheetTitle>メニュー</SheetTitle>
+                  </SheetHeader>
+                  {sidebarContent}
+                </SheetContent>
+              </Sheet>
+            </>
+          )
+        })()}
 
         {/* メインコンテンツ */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* ヘッダー */}
-          <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-card">
-            <div className="flex items-center gap-4">
-              <h2 className="text-xl font-semibold">
+          <header className="h-16 border-b border-border flex items-center justify-between px-4 md:px-6 bg-card gap-2">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              {/* モバイル: ハンバーガー */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden h-11 w-11 shrink-0"
+                onClick={() => setIsMobileNavOpen(true)}
+                aria-label="メニューを開く"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+              <h2 className="text-lg md:text-xl font-semibold truncate">
                 {currentView === "cards" && "名刺一覧"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
@@ -774,30 +810,30 @@ export default function BusinessCardApp() {
                 {currentView === "settings" && "設定"}
               </h2>
               {currentView === "cards" && (
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
                   {filteredCards.length} / {totalCount.toLocaleString()} 件
                 </Badge>
               )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
               {/* 通知 */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative">
+                  <Button variant="ghost" size="icon" className="relative h-11 w-11">
                     <Bell className="w-4 h-4" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-accent rounded-full" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>通知</TooltipContent>
               </Tooltip>
 
-              {/* スキャンボタン */}
+              {/* スキャンボタン: モバイルではアイコンのみ */}
               <Dialog open={isScanDialogOpen} onOpenChange={setIsScanDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="gap-2">
+                  <Button className="gap-2 h-11 md:h-10" aria-label="名刺をスキャン">
                     <ScanLine className="w-4 h-4" />
-                    名刺をスキャン
+                    <span className="hidden md:inline">名刺をスキャン</span>
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
@@ -818,6 +854,7 @@ export default function BusinessCardApp() {
                       onChange={handleFileSelect}
                       className="hidden"
                       accept="image/*"
+                      capture="environment"
                     />
                     
                     {scanError && (
@@ -976,8 +1013,8 @@ export default function BusinessCardApp() {
 
           {/* ダッシュボードビュー */}
           {currentView === "dashboard" && (
-            <div className="flex-1 p-6 overflow-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">総名刺数</CardTitle>
@@ -1046,7 +1083,7 @@ export default function BusinessCardApp() {
 
           {/* タグ管理ビュー */}
           {currentView === "tags" && (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
               <Card>
                 <CardHeader>
                   <CardTitle>タグ一覧</CardTitle>
@@ -1073,9 +1110,9 @@ export default function BusinessCardApp() {
 
           {/* 分析ビュー（4タブ構成） */}
           {currentView === "analytics" && (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
               <Tabs value={analyticsTab} onValueChange={setAnalyticsTab} className="w-full">
-                <TabsList className="grid w-full max-w-2xl grid-cols-4">
+                <TabsList className="grid w-full max-w-2xl grid-cols-4 h-auto">
                   <TabsTrigger value="overview">概要</TabsTrigger>
                   <TabsTrigger value="network">人脈ネットワーク</TabsTrigger>
                   <TabsTrigger value="contacts">顧客連絡頻度</TabsTrigger>
@@ -1140,7 +1177,7 @@ export default function BusinessCardApp() {
 
           {/* 社員管理ビュー */}
           {currentView === "employees" && (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
               <div className="max-w-5xl space-y-6">
                 {/* ヘッダー */}
                 <div className="flex items-center justify-between">
@@ -1157,7 +1194,7 @@ export default function BusinessCardApp() {
                 </div>
 
                 {/* 統計 */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <Card>
                     <CardContent className="pt-6">
                       <div className="text-2xl font-bold">{employees.length}</div>
@@ -1376,7 +1413,7 @@ export default function BusinessCardApp() {
 
           {/* 設定ビュー */}
           {currentView === "settings" && (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
               <div className="max-w-3xl space-y-6">
                 {/* Google Workspace 連携 */}
                 <Card>
@@ -1733,7 +1770,7 @@ export default function BusinessCardApp() {
 
           {/* スキャンビュー */}
           {currentView === "scan" && (
-            <div className="flex-1 p-6 overflow-auto flex items-center justify-center">
+            <div className="flex-1 p-4 md:p-6 overflow-auto flex items-center justify-center">
               <Card className="max-w-md w-full">
                 <CardHeader className="text-center">
                   <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
@@ -1747,6 +1784,7 @@ export default function BusinessCardApp() {
                     onChange={handleFileSelect}
                     className="hidden"
                     accept="image/*"
+                    capture="environment"
                   />
                   {scanError && (
                     <div className="p-3 mb-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
@@ -1797,7 +1835,7 @@ export default function BusinessCardApp() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder="名前、会社名、メールで検索..."
+                    placeholder="名前、会社名、メ���ルで検索..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 bg-background"
@@ -1880,7 +1918,7 @@ export default function BusinessCardApp() {
                 {/* カード一覧 */}
                 <ScrollArea className="flex-1 p-6">
                   {viewMode === "grid" ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                       {filteredCards.map((card) => (
                         <Card
                           key={card.id}
@@ -2042,15 +2080,15 @@ export default function BusinessCardApp() {
                   )}
                 </ScrollArea>
 
-                {/* 詳細パネル */}
-                {selectedCard && (
-                  <aside className="w-96 border-l border-border bg-card overflow-hidden flex flex-col">
+                {/* 詳細パネル：デスクトップは右固定 aside、モバイルは Sheet で全画面オーバーレイ */}
+                {selectedCard && (() => {
+                  const detailHeader = (
                     <div className="p-4 border-b border-border flex items-center justify-between">
                       <h3 className="font-semibold">名刺詳細</h3>
                       <div className="flex items-center gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-9 w-9">
                               <Edit3 className="w-4 h-4" />
                             </Button>
                           </TooltipTrigger>
@@ -2061,7 +2099,7 @@ export default function BusinessCardApp() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              className="h-9 w-9 text-destructive hover:text-destructive"
                               onClick={() => deleteCard(selectedCard.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -2074,7 +2112,7 @@ export default function BusinessCardApp() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-9 w-9"
                               onClick={() => setSelectedCard(null)}
                             >
                               <X className="w-4 h-4" />
@@ -2084,8 +2122,10 @@ export default function BusinessCardApp() {
                         </Tooltip>
                       </div>
                     </div>
+                  )
+                  const detailBody = (
                     <ScrollArea className="flex-1">
-                      <div className="p-4 space-y-6">
+                      <div className="p-4 space-y-6 pb-24 md:pb-6">
                         {/* プロフィール */}
                         <div className="flex flex-col items-center text-center">
                           <Avatar className="w-20 h-20 mb-3">
@@ -2122,23 +2162,23 @@ export default function BusinessCardApp() {
                           <div className="space-y-2.5">
                             <div className="flex items-start gap-3">
                               <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
-                              <div>
-                                <p className="text-sm">{selectedCard.email}</p>
+                              <div className="min-w-0 flex-1">
+                                <a href={`mailto:${selectedCard.email}`} className="text-sm break-all hover:underline">{selectedCard.email}</a>
                                 <p className="text-xs text-muted-foreground">メール</p>
                               </div>
                             </div>
                             <div className="flex items-start gap-3">
                               <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
-                              <div>
-                                <p className="text-sm">{selectedCard.phone}</p>
+                              <div className="min-w-0 flex-1">
+                                <a href={`tel:${selectedCard.phone}`} className="text-sm hover:underline">{selectedCard.phone}</a>
                                 <p className="text-xs text-muted-foreground">電話</p>
                               </div>
                             </div>
                             {selectedCard.mobile && (
                               <div className="flex items-start gap-3">
                                 <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                <div>
-                                  <p className="text-sm">{selectedCard.mobile}</p>
+                                <div className="min-w-0 flex-1">
+                                  <a href={`tel:${selectedCard.mobile}`} className="text-sm hover:underline">{selectedCard.mobile}</a>
                                   <p className="text-xs text-muted-foreground">携帯</p>
                                 </div>
                               </div>
@@ -2146,7 +2186,7 @@ export default function BusinessCardApp() {
                             {selectedCard.address && (
                               <div className="flex items-start gap-3">
                                 <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                <div>
+                                <div className="min-w-0 flex-1">
                                   <p className="text-sm">{selectedCard.address}</p>
                                   <p className="text-xs text-muted-foreground">住所</p>
                                 </div>
@@ -2155,12 +2195,12 @@ export default function BusinessCardApp() {
                             {selectedCard.website && (
                               <div className="flex items-start gap-3">
                                 <Globe className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                <div>
+                                <div className="min-w-0 flex-1">
                                   <a
                                     href={selectedCard.website}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-sm text-primary hover:underline"
+                                    className="text-sm text-primary hover:underline break-all"
                                   >
                                     {selectedCard.website}
                                   </a>
@@ -2177,7 +2217,7 @@ export default function BusinessCardApp() {
                             <Separator />
                             <div className="space-y-3">
                               <h5 className="text-sm font-medium text-muted-foreground">SNS</h5>
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 flex-wrap">
                                 {selectedCard.linkedin && (
                                   <Button variant="outline" size="sm" className="gap-1.5">
                                     <Linkedin className="w-3.5 h-3.5" />
@@ -2206,7 +2246,7 @@ export default function BusinessCardApp() {
                                 {tag}
                               </Badge>
                             ))}
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground">
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground">
                               <Plus className="w-3 h-3 mr-1" />
                               追加
                             </Button>
@@ -2265,8 +2305,48 @@ export default function BusinessCardApp() {
                         </div>
                       </div>
                     </ScrollArea>
-                  </aside>
-                )}
+                  )
+                  // モバイル用 sticky アクションバー（メール/電話/閉じる）
+                  const mobileActionBar = (
+                    <div className="md:hidden sticky bottom-0 inset-x-0 bg-card border-t border-border p-3 flex gap-2">
+                      <a href={`mailto:${selectedCard.email}`} className="flex-1">
+                        <Button className="w-full gap-1.5 h-11" variant="default">
+                          <Mail className="w-4 h-4" />
+                          メール
+                        </Button>
+                      </a>
+                      <a href={`tel:${selectedCard.phone || selectedCard.mobile || ""}`} className="flex-1">
+                        <Button className="w-full gap-1.5 h-11" variant="outline">
+                          <Phone className="w-4 h-4" />
+                          電話
+                        </Button>
+                      </a>
+                    </div>
+                  )
+                  return (
+                    <>
+                      {/* デスクトップ: 右側 aside */}
+                      <aside className="hidden md:flex w-96 border-l border-border bg-card overflow-hidden flex-col">
+                        {detailHeader}
+                        {detailBody}
+                      </aside>
+                      {/* モバイル: 下からスライドアップ Sheet（全画面） */}
+                      <Sheet open={!!selectedCard} onOpenChange={(open) => { if (!open) setSelectedCard(null) }}>
+                        <SheetContent
+                          side="bottom"
+                          className="md:hidden p-0 h-[92dvh] flex flex-col bg-card [&>button]:hidden"
+                        >
+                          <SheetHeader className="sr-only">
+                            <SheetTitle>名刺詳細</SheetTitle>
+                          </SheetHeader>
+                          {detailHeader}
+                          {detailBody}
+                          {mobileActionBar}
+                        </SheetContent>
+                      </Sheet>
+                    </>
+                  )
+                })()}
               </div>
             </>
           )}
