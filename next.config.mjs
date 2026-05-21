@@ -1,11 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  reactStrictMode: true,
   images: {
-    unoptimized: true,
-  },
-}
-
-export default nextConfig
+    // Phase 1 で Supabase Storage / 外部ホスト用に remotePatterns を追�
