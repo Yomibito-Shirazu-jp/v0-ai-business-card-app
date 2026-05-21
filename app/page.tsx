@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import {
   Search,
   Plus,
@@ -93,88 +93,6 @@ interface BusinessCard {
   syncedToGoogle: boolean
 }
 
-// サンプルデータ
-const sampleCards: BusinessCard[] = [
-  {
-    id: "1",
-    name: "田中 太郎",
-    nameKana: "タナカ タロウ",
-    company: "株式会社テクノロジー",
-    department: "営業部",
-    position: "部長",
-    email: "tanaka@technology.co.jp",
-    phone: "03-1234-5678",
-    mobile: "090-1234-5678",
-    address: "東京都渋谷区神宮前1-2-3",
-    website: "https://technology.co.jp",
-    linkedin: "tanaka-taro",
-    tags: ["重要顧客", "IT", "営業"],
-    isFavorite: true,
-    createdAt: new Date("2024-01-15"),
-    lastContactedAt: new Date("2024-03-10"),
-    syncedToGoogle: true,
-  },
-  {
-    id: "2",
-    name: "佐藤 花子",
-    nameKana: "サトウ ハナコ",
-    company: "デザインスタジオ ABC",
-    department: "クリエイティブ部",
-    position: "ディレクター",
-    email: "sato@abc-design.jp",
-    phone: "06-9876-5432",
-    tags: ["デザイン", "パートナー"],
-    isFavorite: false,
-    createdAt: new Date("2024-02-20"),
-    syncedToGoogle: true,
-  },
-  {
-    id: "3",
-    name: "山田 一郎",
-    nameKana: "ヤマダ イチロウ",
-    company: "グローバルコンサルティング",
-    department: "戦略企画室",
-    position: "マネージャー",
-    email: "yamada@global-consulting.com",
-    phone: "03-5555-1234",
-    mobile: "080-5555-1234",
-    address: "東京都港区六本木4-5-6",
-    tags: ["コンサル", "戦略"],
-    isFavorite: true,
-    createdAt: new Date("2024-01-05"),
-    lastContactedAt: new Date("2024-03-15"),
-    syncedToGoogle: false,
-  },
-  {
-    id: "4",
-    name: "鈴木 美咲",
-    nameKana: "スズキ ミサキ",
-    company: "フィンテック株式会社",
-    department: "プロダクト開発",
-    position: "プロダクトマネージャー",
-    email: "suzuki@fintech.co.jp",
-    phone: "03-7777-8888",
-    tags: ["フィンテック", "スタートアップ"],
-    isFavorite: false,
-    createdAt: new Date("2024-03-01"),
-    syncedToGoogle: true,
-  },
-  {
-    id: "5",
-    name: "高橋 健太",
-    nameKana: "タカハシ ケンタ",
-    company: "メディアネットワーク",
-    department: "広報部",
-    position: "広報担当",
-    email: "takahashi@media-network.jp",
-    phone: "03-2222-3333",
-    tags: ["メディア", "広報"],
-    isFavorite: false,
-    createdAt: new Date("2024-02-10"),
-    syncedToGoogle: true,
-  },
-]
-
 // ネットワークデータ
 const networkNodes = [
   { id: "1", name: "田中 太郎", company: "テクノロジー", position: "部長", influence: 85, connections: 12, tags: ["IT", "営業"], group: "IT" },
@@ -229,7 +147,9 @@ const sidebarNav = [
 ]
 
 export default function BusinessCardApp() {
-  const [cards, setCards] = useState<BusinessCard[]>(sampleCards)
+  const [cards, setCards] = useState<BusinessCard[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null)
@@ -241,6 +161,75 @@ export default function BusinessCardApp() {
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Supabaseから名刺データを取得
+  const fetchCards = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const response = await fetch('/api/business-cards')
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'データ取得に失敗しました')
+      }
+      
+      const loadedCards: BusinessCard[] = result.data.map((row: {
+        id: string
+        full_name: string | null
+        full_name_kana: string | null
+        company_name: string | null
+        department: string | null
+        position: string | null
+        email: string | null
+        phone: string | null
+        mobile: string | null
+        address: string | null
+        website: string | null
+        linkedin: string | null
+        twitter: string | null
+        notes: string | null
+        tags: string[] | null
+        is_favorite: boolean | null
+        created_at: string
+        last_contacted_at: string | null
+        image_url: string | null
+      }) => ({
+        id: row.id,
+        name: row.full_name || "不明",
+        nameKana: row.full_name_kana || "",
+        company: row.company_name || "",
+        department: row.department || "",
+        position: row.position || "",
+        email: row.email || "",
+        phone: row.phone || "",
+        mobile: row.mobile || "",
+        address: row.address || "",
+        website: row.website || "",
+        linkedin: row.linkedin || "",
+        twitter: row.twitter || "",
+        notes: row.notes || "",
+        tags: row.tags || [],
+        isFavorite: row.is_favorite || false,
+        createdAt: new Date(row.created_at),
+        lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at) : undefined,
+        imageUrl: row.image_url || "",
+        syncedToGoogle: false,
+      }))
+      
+      setCards(loadedCards)
+    } catch (error) {
+      console.error('データ取得エラー:', error)
+      setLoadError(error instanceof Error ? error.message : 'データ取得に失敗しました')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // 初回ロード
+  useEffect(() => {
+    fetchCards()
+  }, [fetchCards])
 
   // 画像をBase64に変換
   const imageToBase64 = (file: File): Promise<string> => {
