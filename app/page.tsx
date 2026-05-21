@@ -40,7 +40,6 @@ import {
   Globe,
   Linkedin,
   Twitter,
-  Network,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -64,6 +63,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Menu } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -106,74 +107,14 @@ const GOOGLE_SERVICES = [
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
   { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
-  { name: "ネットワーク分析", icon: Network, href: "#", active: false, view: "network" },
   { name: "スキャン", icon: ScanLine, href: "#", active: false, view: "scan" },
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
+  { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
 ]
 
-// 名刺データからネットワークノードを生成
-function generateNetworkNodes(cards: BusinessCard[]) {
-  return cards.slice(0, 100).map((card, index) => ({
-    id: card.id,
-    name: card.name,
-    company: card.company || "不明",
-    position: card.position || "",
-    influence: Math.floor(Math.random() * 40) + 60,
-    connections: Math.floor(Math.random() * 15) + 1,
-    tags: card.tags || [],
-    group: card.tags?.[0] || "その他",
-  }))
-}
-
-// ネットワークリンクを生成（同じ会社、同じタグで関連付け）
-function generateNetworkLinks(cards: BusinessCard[]) {
-  const links: { source: string; target: string; strength: number; type: "business" | "referral" | "meeting" | "project" }[] = []
-  const limitedCards = cards.slice(0, 100)
-  
-  for (let i = 0; i < limitedCards.length; i++) {
-    for (let j = i + 1; j < limitedCards.length; j++) {
-      const cardA = limitedCards[i]
-      const cardB = limitedCards[j]
-      
-      // 同じ会社なら強い関係
-      if (cardA.company && cardB.company && cardA.company === cardB.company) {
-        links.push({
-          source: cardA.id,
-          target: cardB.id,
-          strength: 9,
-          type: "business"
-        })
-        continue
-      }
-      
-      // 同じタグがあれば関係
-      const sharedTags = cardA.tags?.filter(t => cardB.tags?.includes(t)) || []
-      if (sharedTags.length > 0) {
-        links.push({
-          source: cardA.id,
-          target: cardB.id,
-          strength: Math.min(sharedTags.length * 3, 8),
-          type: "project"
-        })
-        continue
-      }
-      
-      // ランダムで一部関係を作成
-      if (Math.random() < 0.02) {
-        links.push({
-          source: cardA.id,
-          target: cardB.id,
-          strength: Math.floor(Math.random() * 5) + 3,
-          type: ["meeting", "referral"][Math.floor(Math.random() * 2)] as "meeting" | "referral"
-        })
-      }
-    }
-  }
-  
-  return links.slice(0, 200) // 最大200リンク
-}
+// ネットワークノード/リンク生成は廃止（NetworkGraph 内で /api/analytics/network から取得）
 
 export default function BusinessCardApp() {
   const [cards, setCards] = useState<BusinessCard[]>([])
@@ -189,6 +130,19 @@ export default function BusinessCardApp() {
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
+  // モバイル: サイドバーを Drawer (Sheet) で開閉
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [analyticsTab, setAnalyticsTab] = useState<string>("overview")
+
+  // URL クエリで初期ビュー/タブを反映（/network → analytics?tab=network のリダイレクト先など）
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const view = params.get("view")
+    const tab = params.get("tab")
+    if (view) setCurrentView(view)
+    if (tab) setAnalyticsTab(tab)
+  }, [])
   const [page, setPage] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(true)
@@ -254,6 +208,38 @@ export default function BusinessCardApp() {
     position: '',
   })
   const [isSavingProfile, setIsSavingProfile] = useState(false)
+
+  // 社員一覧
+  const [employees, setEmployees] = useState<Array<{
+    id: string
+    email: string
+    display_name: string | null
+    display_name_kana: string | null
+    department: string | null
+    position: string | null
+    phone: string | null
+    mobile: string | null
+    role: string
+    status: string
+    invited_at: string
+    activated_at: string | null
+    staff_id: string | null
+  }>>([])
+  const [employeesLoading, setEmployeesLoading] = useState(false)
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    display_name: '',
+    display_name_kana: '',
+    department: '',
+    position: '',
+    role: 'member',
+    phone: '',
+    mobile: '',
+    staff_id: '',
+  })
+  const [isInviting, setIsInviting] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState<string | null>(null)
   
   useEffect(() => {
     const fetchUser = async () => {
@@ -306,9 +292,85 @@ export default function BusinessCardApp() {
     fetchLoginEvents()
   }, [])
 
-  // ネットワークデータを名刺から動的生成
-  const networkNodes = useMemo(() => generateNetworkNodes(cards), [cards])
-  const networkLinks = useMemo(() => generateNetworkLinks(cards), [cards])
+  // 社員一覧取得
+  const fetchEmployees = useCallback(async () => {
+    setEmployeesLoading(true)
+    try {
+      const res = await fetch('/api/employees')
+      if (res.ok) {
+        const data = await res.json()
+        setEmployees(data.data || [])
+      }
+    } catch {
+      // エラー時は無視
+    } finally {
+      setEmployeesLoading(false)
+    }
+  }, [])
+
+  // 社員管理ビュー表示時に取得
+  useEffect(() => {
+    if (currentView === 'employees') {
+      fetchEmployees()
+    }
+  }, [currentView, fetchEmployees])
+
+  // 社員招待
+  const handleInviteEmployee = async () => {
+    if (!inviteForm.email) return
+    setIsInviting(true)
+    try {
+      const res = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inviteForm),
+      })
+      const result = await res.json()
+      if (result.success) {
+        setIsInviteDialogOpen(false)
+        setInviteForm({
+          email: '', display_name: '', display_name_kana: '', department: '',
+          position: '', role: 'member', phone: '', mobile: '', staff_id: '',
+        })
+        fetchEmployees()
+      } else {
+        alert(result.error || '招待に失敗しました')
+      }
+    } catch {
+      alert('招待に失敗しました')
+    } finally {
+      setIsInviting(false)
+    }
+  }
+
+  // 社員ステータス変更
+  const handleUpdateEmployeeStatus = async (employeeId: string, status: string) => {
+    const res = await fetch(`/api/employees/${employeeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    if (res.ok) {
+      fetchEmployees()
+    } else {
+      const result = await res.json()
+      alert(result.error || '更新に失敗しました')
+    }
+  }
+
+  // 社員削除
+  const handleDeleteEmployee = async (employeeId: string, name: string) => {
+    if (!confirm(`${name || 'この社員'}を削除しますか？この操作は取り消せません。`)) return
+    const res = await fetch(`/api/employees/${employeeId}`, { method: 'DELETE' })
+    if (res.ok) {
+      fetchEmployees()
+    } else {
+      const result = await res.json()
+      alert(result.error || '削除に失敗しました')
+    }
+  }
+
+  // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
   // Supabaseから名刺データを���得（ページネーション対応）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
@@ -625,121 +687,153 @@ export default function BusinessCardApp() {
   return (
     <TooltipProvider>
       <div className="flex h-screen bg-background">
-        {/* サイドバー */}
-        <aside className="w-64 border-r border-border bg-sidebar flex flex-col">
-          {/* ロゴ */}
-          <div className="p-4 border-b border-sidebar-border">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-                <Briefcase className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="font-bold text-lg text-sidebar-foreground">名刺Plus</h1>
-                <p className="text-xs text-muted-foreground">AI名刺管理</p>
-              </div>
-            </div>
-          </div>
-
-          {/* ナビゲーション */}
-          <nav className="flex-1 p-3">
-            <ul className="space-y-1">
-              {sidebarNav.map((item) => (
-                <li key={item.name}>
-                  <button
-                    onClick={() => setCurrentView(item.view)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left ${
-                      currentView === item.view
-                        ? "bg-sidebar-accent text-sidebar-foreground font-medium"
-                        : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            {/* 設定へのリンク（Google連携はここでバッジ表示） */}
-          </nav>
-
-          {/* ユーザー */}
-          <div className="p-3 border-t border-sidebar-border">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                      {currentUser?.name?.slice(0, 2) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
-                    <p className="text-xs text-muted-foreground">{currentUser?.plan || ""}</p>
+        {/* サイドバー本体（デスクトップ＋モバイルで共有するコンテンツ） */}
+        {(() => {
+          const sidebarContent = (
+            <>
+              {/* ロゴ */}
+              <div className="p-4 border-b border-sidebar-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+                    <Briefcase className="w-5 h-5 text-primary-foreground" />
                   </div>
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem>
-                  <CircleUser className="w-4 h-4 mr-2" />
-                  プロフィール
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCurrentView("settings")}>
-                  <Settings className="w-4 h-4 mr-2" />
-                  設定
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" onClick={async () => {
-                  await fetch('/api/logout', { method: 'POST' })
-                  window.location.href = '/login'
-                }}>
-                  ログアウト
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </aside>
+                  <div>
+                    <h1 className="font-bold text-lg text-sidebar-foreground">名刺Plus</h1>
+                    <p className="text-xs text-muted-foreground">AI名刺管理</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ナビゲーション */}
+              <nav className="flex-1 p-3 overflow-y-auto">
+                <ul className="space-y-1">
+                  {sidebarNav.map((item) => (
+                    <li key={item.name}>
+                      <button
+                        onClick={() => {
+                          setCurrentView(item.view)
+                          setIsMobileNavOpen(false)
+                        }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left min-h-11 ${
+                          currentView === item.view
+                            ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+                            : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        {item.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+
+              {/* ユーザー */}
+              <div className="p-3 border-t border-sidebar-border">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors min-h-11">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {currentUser?.name?.slice(0, 2) || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
+                        <p className="text-xs text-muted-foreground">{currentUser?.plan || ""}</p>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem>
+                      <CircleUser className="w-4 h-4 mr-2" />
+                      プロフィール
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setCurrentView("settings"); setIsMobileNavOpen(false) }}>
+                      <Settings className="w-4 h-4 mr-2" />
+                      設定
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive" onClick={async () => {
+                      await fetch('/api/logout', { method: 'POST' })
+                      window.location.href = '/login'
+                    }}>
+                      ログアウト
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </>
+          )
+          return (
+            <>
+              {/* デスクトップ: 固定サイドバー */}
+              <aside className="hidden md:flex w-64 border-r border-border bg-sidebar flex-col">
+                {sidebarContent}
+              </aside>
+              {/* モバイル: Drawer (Sheet) */}
+              <Sheet open={isMobileNavOpen} onOpenChange={setIsMobileNavOpen}>
+                <SheetContent side="left" className="p-0 w-72 bg-sidebar flex flex-col [&>button]:hidden">
+                  <SheetHeader className="sr-only">
+                    <SheetTitle>メニュー</SheetTitle>
+                  </SheetHeader>
+                  {sidebarContent}
+                </SheetContent>
+              </Sheet>
+            </>
+          )
+        })()}
 
         {/* メインコンテンツ */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* ヘッダー */}
-          <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-card">
-            <div className="flex items-center gap-4">
-              <h2 className="text-xl font-semibold">
+          <header className="h-16 border-b border-border flex items-center justify-between px-4 md:px-6 bg-card gap-2">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              {/* モバイル: ハンバーガー */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden h-11 w-11 shrink-0"
+                onClick={() => setIsMobileNavOpen(true)}
+                aria-label="メニューを開く"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+              <h2 className="text-lg md:text-xl font-semibold truncate">
                 {currentView === "cards" && "名刺一覧"}
-                {currentView === "network" && "ネットワーク分析"}
+                {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
                 {currentView === "scan" && "スキャン"}
                 {currentView === "tags" && "タグ管理"}
-                {currentView === "analytics" && "分析"}
+                {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
               </h2>
               {currentView === "cards" && (
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
                   {filteredCards.length} / {totalCount.toLocaleString()} 件
                 </Badge>
               )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
               {/* 通知 */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative">
+                  <Button variant="ghost" size="icon" className="relative h-11 w-11">
                     <Bell className="w-4 h-4" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-accent rounded-full" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>通知</TooltipContent>
               </Tooltip>
 
-              {/* スキャンボタン */}
+              {/* スキャンボタン: モバイルではアイコンのみ */}
               <Dialog open={isScanDialogOpen} onOpenChange={setIsScanDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="gap-2">
+                  <Button className="gap-2 h-11 md:h-10" aria-label="名刺をスキャン">
                     <ScanLine className="w-4 h-4" />
-                    名刺をスキャン
+                    <span className="hidden md:inline">名刺をスキャン</span>
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
@@ -760,6 +854,7 @@ export default function BusinessCardApp() {
                       onChange={handleFileSelect}
                       className="hidden"
                       accept="image/*"
+                      capture="environment"
                     />
                     
                     {scanError && (
@@ -916,24 +1011,10 @@ export default function BusinessCardApp() {
             </div>
           </header>
 
-          {/* ネットワーク分析ビュー */}
-          {currentView === "network" && (
-            <div className="flex-1 p-6 overflow-hidden">
-              <NetworkGraph
-                nodes={networkNodes}
-                links={networkLinks}
-                onNodeClick={(node) => {
-                  const card = cards.find((c) => c.id === node.id)
-                  if (card) setSelectedCard(card)
-                }}
-              />
-            </div>
-          )}
-
           {/* ダッシュボードビュー */}
           {currentView === "dashboard" && (
-            <div className="flex-1 p-6 overflow-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">総名刺数</CardTitle>
@@ -1002,7 +1083,7 @@ export default function BusinessCardApp() {
 
           {/* タグ管理ビュー */}
           {currentView === "tags" && (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
               <Card>
                 <CardHeader>
                   <CardTitle>タグ一覧</CardTitle>
@@ -1027,49 +1108,312 @@ export default function BusinessCardApp() {
             </div>
           )}
 
-          {/* 分析ビュー */}
+          {/* 分析ビュー（4タブ構成） */}
           {currentView === "analytics" && (
-            <div className="flex-1 p-6 overflow-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
+              <Tabs value={analyticsTab} onValueChange={setAnalyticsTab} className="w-full">
+                <TabsList className="grid w-full max-w-2xl grid-cols-4 h-auto">
+                  <TabsTrigger value="overview">概要</TabsTrigger>
+                  <TabsTrigger value="network">人脈ネットワーク</TabsTrigger>
+                  <TabsTrigger value="contacts">顧客連絡頻度</TabsTrigger>
+                  <TabsTrigger value="cold">営業薄企業</TabsTrigger>
+                </TabsList>
+
+                {/* タブ1: 概要 */}
+                <TabsContent value="overview" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>概要</CardTitle>
+                      <CardDescription>各種KPIサマリ</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">Coming soon</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* タブ2: 人脈ネットワーク（実DBデータをAPIから取得） */}
+                <TabsContent value="network" className="mt-6">
+                  <div className="h-[calc(100vh-220px)] min-h-[500px]">
+                    <NetworkGraph
+                      onNodeClick={(nodeId, nodeType) => {
+                        if (nodeType !== "business_card") return
+                        const cardId = nodeId.replace(/^card_/, "")
+                        const card = cards.find((c) => c.id === cardId)
+                        if (card) setSelectedCard(card)
+                      }}
+                    />
+                  </div>
+                </TabsContent>
+
+                {/* タブ3: 顧客連絡頻度 */}
+                <TabsContent value="contacts" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>顧客連絡頻度</CardTitle>
+                      <CardDescription>Gmail/Calendar連携による連絡履歴の頻度分析</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">Coming soon</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* タブ4: 営業薄企業 */}
+                <TabsContent value="cold" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>営業薄企業</CardTitle>
+                      <CardDescription>連絡が薄い企業の検出</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">Coming soon</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          {/* 社員管理ビュー */}
+          {currentView === "employees" && (
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
+              <div className="max-w-5xl space-y-6">
+                {/* ヘッダー */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">社員管理</h2>
+                    <p className="text-muted-foreground">社員の招待・管理ができます</p>
+                  </div>
+                  {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && (
+                    <Button onClick={() => setIsInviteDialogOpen(true)}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      社員を招待
+                    </Button>
+                  )}
+                </div>
+
+                {/* 統計 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.length}</div>
+                      <p className="text-xs text-muted-foreground">総社員数</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.filter(e => e.status === 'active').length}</div>
+                      <p className="text-xs text-muted-foreground">アクティブ</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.filter(e => e.status === 'invited').length}</div>
+                      <p className="text-xs text-muted-foreground">招待中</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold">{employees.filter(e => e.status === 'suspended').length}</div>
+                      <p className="text-xs text-muted-foreground">停止中</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* 社員リスト */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>業種別分布</CardTitle>
+                    <CardTitle>社員一覧</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {Object.entries(
-                        cards.reduce((acc, card) => {
-                          const company = card.company || '不明'
-                          acc[company] = (acc[company] || 0) + 1
-                          return acc
-                        }, {} as Record<string, number>)
-                      )
-                        .sort((a, b) => b[1] - a[1])
-                        .slice(0, 10)
-                        .map(([company, count]) => (
-                          <div key={company} className="flex items-center justify-between">
-                            <span className="text-sm truncate flex-1">{company}</span>
-                            <span className="text-sm font-medium ml-4">{count}名</span>
-                          </div>
-                        ))}
+                    {employeesLoading ? (
+                      <p className="text-muted-foreground text-center py-8">読み込み中...</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-3 px-2">氏名</th>
+                              <th className="text-left py-3 px-2">メール</th>
+                              <th className="text-left py-3 px-2">部署</th>
+                              <th className="text-left py-3 px-2">役職</th>
+                              <th className="text-left py-3 px-2">権限</th>
+                              <th className="text-left py-3 px-2">ステータス</th>
+                              <th className="text-left py-3 px-2">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {employees.map((emp) => (
+                              <tr key={emp.id} className="border-b hover:bg-muted/50">
+                                <td className="py-3 px-2">
+                                  <div>
+                                    <p className="font-medium">{emp.display_name || '未設定'}</p>
+                                    {emp.display_name_kana && (
+                                      <p className="text-xs text-muted-foreground">{emp.display_name_kana}</p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-2 text-muted-foreground">{emp.email}</td>
+                                <td className="py-3 px-2">{emp.department || '-'}</td>
+                                <td className="py-3 px-2">{emp.position || '-'}</td>
+                                <td className="py-3 px-2">
+                                  <Badge variant={emp.role === 'owner' ? 'default' : emp.role === 'admin' ? 'secondary' : 'outline'}>
+                                    {emp.role === 'owner' ? 'オーナー' : emp.role === 'admin' ? '管理者' : 'メンバー'}
+                                  </Badge>
+                                </td>
+                                <td className="py-3 px-2">
+                                  <Badge variant={emp.status === 'active' ? 'default' : emp.status === 'invited' ? 'secondary' : 'destructive'}>
+                                    {emp.status === 'active' ? 'アクティブ' : emp.status === 'invited' ? '招待中' : '停止中'}
+                                  </Badge>
+                                </td>
+                                <td className="py-3 px-2">
+                                  {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && emp.role !== 'owner' && (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm">
+                                          <MoreHorizontal className="w-4 h-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        {emp.status === 'active' && (
+                                          <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'suspended')}>
+                                            アカウント停止
+                                          </DropdownMenuItem>
+                                        )}
+                                        {emp.status === 'suspended' && (
+                                          <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'active')}>
+                                            アカウント復活
+                                          </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-destructive"
+                                          onClick={() => handleDeleteEmployee(emp.id, emp.display_name || '')}
+                                        >
+                                          削除
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* 招待ダイアログ */}
+                <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>社員を招待</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+                      <div>
+                        <label className="text-sm font-medium">メールアドレス *</label>
+                        <Input
+                          type="email"
+                          value={inviteForm.email}
+                          onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="example@company.co.jp"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">氏名</label>
+                          <Input
+                            value={inviteForm.display_name}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, display_name: e.target.value }))}
+                            placeholder="山田 太郎"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">フリガナ</label>
+                          <Input
+                            value={inviteForm.display_name_kana}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                            placeholder="ヤマダ タロウ"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">部署</label>
+                          <Input
+                            value={inviteForm.department}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, department: e.target.value }))}
+                            placeholder="営業部"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">役職</label>
+                          <Input
+                            value={inviteForm.position}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, position: e.target.value }))}
+                            placeholder="部長"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">電話番号</label>
+                          <Input
+                            value={inviteForm.phone}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="03-1234-5678"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">携帯電話</label>
+                          <Input
+                            value={inviteForm.mobile}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, mobile: e.target.value }))}
+                            placeholder="090-1234-5678"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium">社員番号</label>
+                          <Input
+                            value={inviteForm.staff_id}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, staff_id: e.target.value }))}
+                            placeholder="EMP001"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">権限</label>
+                          <select
+                            className="w-full p-2 border rounded-md bg-background"
+                            value={inviteForm.role}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, role: e.target.value }))}
+                          >
+                            <option value="member">メンバー</option>
+                            <option value="admin">管理者</option>
+                            {currentUser?.role === 'owner' && <option value="owner">オーナー</option>}
+                          </select>
+                        </div>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>登録推移</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground text-sm">総登録数: {totalCount.toLocaleString()}件</p>
-                  </CardContent>
-                </Card>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setIsInviteDialogOpen(false)}>キャンセル</Button>
+                      <Button onClick={handleInviteEmployee} disabled={!inviteForm.email || isInviting}>
+                        {isInviting ? '招待中...' : '招待する'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
           )}
 
           {/* 設定ビュー */}
           {currentView === "settings" && (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 p-4 md:p-6 overflow-auto">
               <div className="max-w-3xl space-y-6">
                 {/* Google Workspace 連携 */}
                 <Card>
@@ -1172,7 +1516,7 @@ export default function BusinessCardApp() {
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium">氏名</label>
+                        <label className="text-sm font-medium">��名</label>
                         <Input
                           value={profileForm.display_name}
                           onChange={(e) => setProfileForm(prev => ({ ...prev, display_name: e.target.value }))}
@@ -1426,7 +1770,7 @@ export default function BusinessCardApp() {
 
           {/* スキャンビュー */}
           {currentView === "scan" && (
-            <div className="flex-1 p-6 overflow-auto flex items-center justify-center">
+            <div className="flex-1 p-4 md:p-6 overflow-auto flex items-center justify-center">
               <Card className="max-w-md w-full">
                 <CardHeader className="text-center">
                   <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
@@ -1440,6 +1784,7 @@ export default function BusinessCardApp() {
                     onChange={handleFileSelect}
                     className="hidden"
                     accept="image/*"
+                    capture="environment"
                   />
                   {scanError && (
                     <div className="p-3 mb-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
@@ -1490,7 +1835,7 @@ export default function BusinessCardApp() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder="名前、会社名、メールで検索..."
+                    placeholder="名前、会社名、メ���ルで検索..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 bg-background"
@@ -1573,7 +1918,7 @@ export default function BusinessCardApp() {
                 {/* カード一覧 */}
                 <ScrollArea className="flex-1 p-6">
                   {viewMode === "grid" ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                       {filteredCards.map((card) => (
                         <Card
                           key={card.id}
@@ -1735,15 +2080,15 @@ export default function BusinessCardApp() {
                   )}
                 </ScrollArea>
 
-                {/* 詳細パネル */}
-                {selectedCard && (
-                  <aside className="w-96 border-l border-border bg-card overflow-hidden flex flex-col">
+                {/* 詳細パネル：デスクトップは右固定 aside、モバイルは Sheet で全画面オーバーレイ */}
+                {selectedCard && (() => {
+                  const detailHeader = (
                     <div className="p-4 border-b border-border flex items-center justify-between">
                       <h3 className="font-semibold">名刺詳細</h3>
                       <div className="flex items-center gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-9 w-9">
                               <Edit3 className="w-4 h-4" />
                             </Button>
                           </TooltipTrigger>
@@ -1754,7 +2099,7 @@ export default function BusinessCardApp() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              className="h-9 w-9 text-destructive hover:text-destructive"
                               onClick={() => deleteCard(selectedCard.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1767,7 +2112,7 @@ export default function BusinessCardApp() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-9 w-9"
                               onClick={() => setSelectedCard(null)}
                             >
                               <X className="w-4 h-4" />
@@ -1777,8 +2122,10 @@ export default function BusinessCardApp() {
                         </Tooltip>
                       </div>
                     </div>
+                  )
+                  const detailBody = (
                     <ScrollArea className="flex-1">
-                      <div className="p-4 space-y-6">
+                      <div className="p-4 space-y-6 pb-24 md:pb-6">
                         {/* プロフィール */}
                         <div className="flex flex-col items-center text-center">
                           <Avatar className="w-20 h-20 mb-3">
@@ -1815,23 +2162,23 @@ export default function BusinessCardApp() {
                           <div className="space-y-2.5">
                             <div className="flex items-start gap-3">
                               <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
-                              <div>
-                                <p className="text-sm">{selectedCard.email}</p>
+                              <div className="min-w-0 flex-1">
+                                <a href={`mailto:${selectedCard.email}`} className="text-sm break-all hover:underline">{selectedCard.email}</a>
                                 <p className="text-xs text-muted-foreground">メール</p>
                               </div>
                             </div>
                             <div className="flex items-start gap-3">
                               <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
-                              <div>
-                                <p className="text-sm">{selectedCard.phone}</p>
+                              <div className="min-w-0 flex-1">
+                                <a href={`tel:${selectedCard.phone}`} className="text-sm hover:underline">{selectedCard.phone}</a>
                                 <p className="text-xs text-muted-foreground">電話</p>
                               </div>
                             </div>
                             {selectedCard.mobile && (
                               <div className="flex items-start gap-3">
                                 <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                <div>
-                                  <p className="text-sm">{selectedCard.mobile}</p>
+                                <div className="min-w-0 flex-1">
+                                  <a href={`tel:${selectedCard.mobile}`} className="text-sm hover:underline">{selectedCard.mobile}</a>
                                   <p className="text-xs text-muted-foreground">携帯</p>
                                 </div>
                               </div>
@@ -1839,7 +2186,7 @@ export default function BusinessCardApp() {
                             {selectedCard.address && (
                               <div className="flex items-start gap-3">
                                 <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                <div>
+                                <div className="min-w-0 flex-1">
                                   <p className="text-sm">{selectedCard.address}</p>
                                   <p className="text-xs text-muted-foreground">住所</p>
                                 </div>
@@ -1848,12 +2195,12 @@ export default function BusinessCardApp() {
                             {selectedCard.website && (
                               <div className="flex items-start gap-3">
                                 <Globe className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                <div>
+                                <div className="min-w-0 flex-1">
                                   <a
                                     href={selectedCard.website}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-sm text-primary hover:underline"
+                                    className="text-sm text-primary hover:underline break-all"
                                   >
                                     {selectedCard.website}
                                   </a>
@@ -1870,7 +2217,7 @@ export default function BusinessCardApp() {
                             <Separator />
                             <div className="space-y-3">
                               <h5 className="text-sm font-medium text-muted-foreground">SNS</h5>
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 flex-wrap">
                                 {selectedCard.linkedin && (
                                   <Button variant="outline" size="sm" className="gap-1.5">
                                     <Linkedin className="w-3.5 h-3.5" />
@@ -1899,7 +2246,7 @@ export default function BusinessCardApp() {
                                 {tag}
                               </Badge>
                             ))}
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground">
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground">
                               <Plus className="w-3 h-3 mr-1" />
                               追加
                             </Button>
@@ -1958,8 +2305,48 @@ export default function BusinessCardApp() {
                         </div>
                       </div>
                     </ScrollArea>
-                  </aside>
-                )}
+                  )
+                  // モバイル用 sticky アクションバー（メール/電話/閉じる）
+                  const mobileActionBar = (
+                    <div className="md:hidden sticky bottom-0 inset-x-0 bg-card border-t border-border p-3 flex gap-2">
+                      <a href={`mailto:${selectedCard.email}`} className="flex-1">
+                        <Button className="w-full gap-1.5 h-11" variant="default">
+                          <Mail className="w-4 h-4" />
+                          メール
+                        </Button>
+                      </a>
+                      <a href={`tel:${selectedCard.phone || selectedCard.mobile || ""}`} className="flex-1">
+                        <Button className="w-full gap-1.5 h-11" variant="outline">
+                          <Phone className="w-4 h-4" />
+                          電話
+                        </Button>
+                      </a>
+                    </div>
+                  )
+                  return (
+                    <>
+                      {/* デスクトップ: 右側 aside */}
+                      <aside className="hidden md:flex w-96 border-l border-border bg-card overflow-hidden flex-col">
+                        {detailHeader}
+                        {detailBody}
+                      </aside>
+                      {/* モバイル: 下からスライドアップ Sheet（全画面） */}
+                      <Sheet open={!!selectedCard} onOpenChange={(open) => { if (!open) setSelectedCard(null) }}>
+                        <SheetContent
+                          side="bottom"
+                          className="md:hidden p-0 h-[92dvh] flex flex-col bg-card [&>button]:hidden"
+                        >
+                          <SheetHeader className="sr-only">
+                            <SheetTitle>名刺詳細</SheetTitle>
+                          </SheetHeader>
+                          {detailHeader}
+                          {detailBody}
+                          {mobileActionBar}
+                        </SheetContent>
+                      </Sheet>
+                    </>
+                  )
+                })()}
               </div>
             </>
           )}
