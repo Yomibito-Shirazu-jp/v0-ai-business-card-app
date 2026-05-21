@@ -160,14 +160,18 @@ export default function BusinessCardApp() {
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<string>("cards")
+  const [page, setPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const pageSize = 50
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Supabaseから名刺データを取得
-  const fetchCards = useCallback(async () => {
-    setIsLoading(true)
+  // Supabaseから名刺データを取得（ページネーション対応）
+  const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
+    if (!append) setIsLoading(true)
     setLoadError(null)
     try {
-      const response = await fetch('/api/business-cards')
+      const response = await fetch(`/api/business-cards?limit=${pageSize}&offset=${pageNum * pageSize}`)
       const result = await response.json()
       
       if (!result.success) {
@@ -217,7 +221,13 @@ export default function BusinessCardApp() {
         syncedToGoogle: false,
       }))
       
-      setCards(loadedCards)
+      if (append) {
+        setCards(prev => [...prev, ...loadedCards])
+      } else {
+        setCards(loadedCards)
+      }
+      setTotalCount(result.count || 0)
+      setHasMore(loadedCards.length === pageSize)
     } catch (error) {
       console.error('データ取得エラー:', error)
       setLoadError(error instanceof Error ? error.message : 'データ取得に失敗しました')
@@ -228,8 +238,15 @@ export default function BusinessCardApp() {
 
   // 初回ロード
   useEffect(() => {
-    fetchCards()
+    fetchCards(0, false)
   }, [fetchCards])
+
+  // もっと読み込む
+  const loadMore = useCallback(() => {
+    const nextPage = page + 1
+    setPage(nextPage)
+    fetchCards(nextPage, true)
+  }, [page, fetchCards])
 
   // 画像をBase64に変換
   const imageToBase64 = (file: File): Promise<string> => {
@@ -476,7 +493,7 @@ export default function BusinessCardApp() {
               </h2>
               {currentView === "cards" && (
                 <Badge variant="secondary" className="text-xs">
-                  {filteredCards.length} 件
+                  {filteredCards.length} / {totalCount.toLocaleString()} 件
                 </Badge>
               )}
             </div>
@@ -708,7 +725,7 @@ export default function BusinessCardApp() {
                     <CardTitle>登録推移</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-muted-foreground text-sm">総登録数: {cards.length.toLocaleString()}件</p>
+                    <p className="text-muted-foreground text-sm">総登録数: {totalCount.toLocaleString()}件</p>
                   </CardContent>
                 </Card>
               </div>
@@ -1048,6 +1065,15 @@ export default function BusinessCardApp() {
                           </CardContent>
                         </Card>
                       ))}
+                    </div>
+                  )}
+                  
+                  {/* もっと読み込むボタン */}
+                  {hasMore && filteredCards.length > 0 && (
+                    <div className="flex justify-center py-4">
+                      <Button variant="outline" onClick={loadMore} disabled={isLoading}>
+                        {isLoading ? "読み込み中..." : `さらに読み込む（残り ${Math.max(0, totalCount - cards.length).toLocaleString()} 件）`}
+                      </Button>
                     </div>
                   )}
                 </ScrollArea>
