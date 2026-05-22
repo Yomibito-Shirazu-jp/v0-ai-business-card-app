@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import {
   Search,
@@ -778,7 +779,23 @@ export default function BusinessCardApp() {
               {/* ナビゲーション */}
               <nav className="flex-1 p-3 overflow-y-auto">
                 <ul className="space-y-1">
-                  {sidebarNav.map((item) => (
+                  {sidebarNav.map((item) => {
+                    // 名刺一覧は専用ページ /cards に遷移（一覧+詳細を分離した新UI）
+                    if (item.view === "cards") {
+                      return (
+                        <li key={item.name}>
+                          <Link
+                            href="/cards"
+                            onClick={() => setIsMobileNavOpen(false)}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left min-h-11 text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                          >
+                            <item.icon className="w-4 h-4" />
+                            <span>{item.name}</span>
+                          </Link>
+                        </li>
+                      )
+                    }
+                    return (
                     <li key={item.name}>
                       <button
                         onClick={() => {
@@ -795,7 +812,7 @@ export default function BusinessCardApp() {
                         {item.name}
                       </button>
                     </li>
-                  ))}
+                  )})}
                 </ul>
               </nav>
 
@@ -887,7 +904,7 @@ export default function BusinessCardApp() {
             </div>
 
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
-              {/* 通知 */}
+              {/* 通��� */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative h-11 w-11">
@@ -898,7 +915,7 @@ export default function BusinessCardApp() {
                 <TooltipContent>通知</TooltipContent>
               </Tooltip>
 
-              {/* スキャンボタン: モバイルではアイコンのみ */}
+              {/* スキャンボ���ン: モバイルではアイコンのみ */}
               <Dialog open={isScanDialogOpen} onOpenChange={setIsScanDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="gap-2 h-11 md:h-10" aria-label="名刺をスキャン">
@@ -1835,7 +1852,7 @@ export default function BusinessCardApp() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium">営業薄企業アラート（週次）</p>
-                        <p className="text-sm text-muted-foreground">連絡頻度が低い顧客の週次サマリ</p>
+                        <p className="text-sm text-muted-foreground">連��頻度が低い顧客の週次サマリ</p>
                       </div>
                       <input
                         type="checkbox"
