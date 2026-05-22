@@ -84,15 +84,15 @@ export default function LoginPage() {
           <CardDescription>AI 名刺管理にログインしてください</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Google ログイン（公式 G ロゴ + 白背景・濃文字で視認性確保） */}
-          <Button
+          {/* Google ログイン（白背景＋濃文字＋枠線で必ず視認できるよう Tailwind の任意値で固定） */}
+          <button
+            type="button"
             onClick={handleGoogle}
             disabled={pendingProvider !== null}
-            className="w-full gap-3 h-11 bg-white text-[#1f1f1f] border border-[#dadce0] hover:bg-[#f8f9fa] hover:text-[#1f1f1f] shadow-sm"
-            variant="outline"
+            className="w-full h-11 inline-flex items-center justify-center gap-3 rounded-md border border-[#dadce0] bg-white text-[#1f1f1f] text-sm font-medium shadow-sm hover:bg-[#f8f9fa] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {pendingProvider === "google" ? (
-              <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+              <Loader2 className="w-5 h-5 animate-spin text-[#1f1f1f]" aria-hidden="true" />
             ) : (
               <svg className="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -102,8 +102,8 @@ export default function LoginPage() {
                 <path fill="none" d="M0 0h48v48H0z"/>
               </svg>
             )}
-            <span className="font-medium">Google でログイン</span>
-          </Button>
+            <span>Google でログイン</span>
+          </button>
 
           <div className="relative py-1">
             <div className="absolute inset-0 flex items-center">
