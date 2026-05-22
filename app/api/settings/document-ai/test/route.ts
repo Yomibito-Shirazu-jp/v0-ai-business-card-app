@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     })
     parser = 'gemini'
   } catch (e) {
-    geminiError = e instanceof Error ? e.message : String(e)
+    geminiError = (e instanceof Error ? e.message : String(e)).slice(0, 500)
     parsed = parseBusinessCardRawText(ocrResult.rawText)
     parser = 'rule'
   }

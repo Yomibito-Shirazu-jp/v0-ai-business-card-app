@@ -1,7 +1,7 @@
-// Vertex AI Gemini で名刺の OCR テキストを構造化 JSON にする。
-// Document AI と同じ Service Account / cloud-platform scope で叩ける。
-// Vertex AI 未有効 / IAM 未設定で 404/403 が返るときは throw し、呼び出し側で fallback。
-import { getGoogleAccessToken } from './gcp-auth'
+// Google Gemini API (AI Studio, generativelanguage.googleapis.com) で
+// 名刺の OCR テキストを構造化 JSON にする。
+// 認証は API キー (https://aistudio.google.com/app/apikey で発行) を使う。
+// Vertex AI / OAuth は使わない。
 import type { OCRResult } from './supabase/types'
 
 const PROMPT = `あなたは日本語ビジネス名刺のパーサーです。
@@ -22,49 +22,44 @@ const PROMPT = `あなたは日本語ビジネス名刺のパーサーです。
 - 該当データが無いフィールドは必ず null。推測で埋めない。
 - confidence は 0〜1 の数値で、抽出全体の自信度。`
 
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    full_name: { type: 'string', nullable: true },
+    full_name_kana: { type: 'string', nullable: true },
+    company_name: { type: 'string', nullable: true },
+    company_name_kana: { type: 'string', nullable: true },
+    department: { type: 'string', nullable: true },
+    position: { type: 'string', nullable: true },
+    email: { type: 'string', nullable: true },
+    phone: { type: 'string', nullable: true },
+    mobile: { type: 'string', nullable: true },
+    fax: { type: 'string', nullable: true },
+    postal_code: { type: 'string', nullable: true },
+    address: { type: 'string', nullable: true },
+    website: { type: 'string', nullable: true },
+    linkedin: { type: 'string', nullable: true },
+    twitter: { type: 'string', nullable: true },
+    facebook: { type: 'string', nullable: true },
+    confidence: { type: 'number' },
+  },
+}
+
 export async function parseBusinessCardText(opts: {
-  serviceAccountJson: string
-  projectId: string
+  apiKey: string
   rawText: string
   model?: string
 }): Promise<OCRResult> {
-  const { serviceAccountJson, projectId, rawText } = opts
-  const model = opts.model || 'gemini-2.0-flash-001'
+  const { apiKey, rawText } = opts
+  const model = opts.model || 'gemini-2.0-flash'
 
-  const token = await getGoogleAccessToken(serviceAccountJson)
   const url =
-    `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}` +
-    `/locations/us-central1/publishers/google/models/${model}:generateContent`
-
-  const responseSchema = {
-    type: 'object',
-    properties: {
-      full_name: { type: 'string', nullable: true },
-      full_name_kana: { type: 'string', nullable: true },
-      company_name: { type: 'string', nullable: true },
-      company_name_kana: { type: 'string', nullable: true },
-      department: { type: 'string', nullable: true },
-      position: { type: 'string', nullable: true },
-      email: { type: 'string', nullable: true },
-      phone: { type: 'string', nullable: true },
-      mobile: { type: 'string', nullable: true },
-      fax: { type: 'string', nullable: true },
-      postal_code: { type: 'string', nullable: true },
-      address: { type: 'string', nullable: true },
-      website: { type: 'string', nullable: true },
-      linkedin: { type: 'string', nullable: true },
-      twitter: { type: 'string', nullable: true },
-      facebook: { type: 'string', nullable: true },
-      confidence: { type: 'number' },
-    },
-  }
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
+    `?key=${encodeURIComponent(apiKey)}`
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [
         { role: 'user', parts: [{ text: `${PROMPT}\n\n--- 名刺の OCR テキスト ---\n${rawText}` }] },
@@ -72,14 +67,14 @@ export async function parseBusinessCardText(opts: {
       generationConfig: {
         temperature: 0,
         responseMimeType: 'application/json',
-        responseSchema,
+        responseSchema: RESPONSE_SCHEMA,
       },
     }),
   })
 
   if (!res.ok) {
     const body = await res.text()
-    const err: any = new Error(`Vertex AI Gemini 失敗 (${res.status}): ${body.slice(0, 500)}`)
+    const err: any = new Error(`Gemini API 失敗 (${res.status}): ${body.slice(0, 500)}`)
     err.status = res.status
     throw err
   }
@@ -117,6 +112,6 @@ export async function parseBusinessCardText(opts: {
     twitter: s(parsed.twitter),
     facebook: s(parsed.facebook),
     raw_text: rawText,
-    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,
+    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
   }
 }

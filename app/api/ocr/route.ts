@@ -9,10 +9,9 @@ export const maxDuration = 60
 export const runtime = 'nodejs'
 
 // 名刺 OCR API
-// 1. Document OCR で生テキスト取得
-// 2. Vertex AI Gemini で構造化 (主)
-// 3. Gemini が失敗したら lib/parse-card.ts の正規表現で構造化 (fallback)
-// 設定情報は company_secrets テーブルから読む。
+// 1. Document AI (Document OCR processor) で raw_text 取得
+// 2. Gemini API (AI Studio) で構造化 (主) — company_secrets.gemini_api_key
+// 3. Gemini が失敗 / API キー無し → ルールベース parser で構造化 (fallback)
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -41,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     const { data: secrets, error: secretsError } = await supabase
       .from('company_secrets')
-      .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json')
+      .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json, gemini_api_key')
       .eq('company_id', employee.company_id)
       .single()
 
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest) {
       imageBase64 = m[2]
     }
 
-    // 1. Document OCR で生テキスト
+    // 1. Document OCR
     const ocr = await processOcr({
       serviceAccountJson: secrets.gcp_service_account_json,
       projectId: secrets.gcp_project_id,
@@ -91,30 +90,57 @@ export async function POST(request: NextRequest) {
     })
 
     if (!ocr.rawText || ocr.rawText.trim().length === 0) {
-      const empty: OCRResult = { raw_text: '', confidence: 0 }
+      const empty: OCRResult = {
+        full_name: undefined,
+        full_name_kana: undefined,
+        company_name: undefined,
+        company_name_kana: undefined,
+        department: undefined,
+        position: undefined,
+        email: undefined,
+        phone: undefined,
+        mobile: undefined,
+        fax: undefined,
+        postal_code: undefined,
+        address: undefined,
+        website: undefined,
+        linkedin: undefined,
+        twitter: undefined,
+        facebook: undefined,
+        raw_text: '',
+        confidence: 0,
+      }
       return NextResponse.json(empty)
     }
 
-    // 2. Gemini 主 → 失敗時は parser fallback
+    // 2. Gemini API (主) → 失敗 / 未設定なら parser (fallback)
     let result: OCRResult
-    let parser = 'gemini' as 'gemini' | 'rule'
+    let parser: 'gemini' | 'rule' = 'rule'
     let geminiError: string | undefined
-    try {
-      result = await parseBusinessCardText({
-        serviceAccountJson: secrets.gcp_service_account_json,
-        projectId: secrets.gcp_project_id,
-        rawText: ocr.rawText,
-      })
-    } catch (e) {
-      geminiError = e instanceof Error ? e.message : String(e)
-      console.warn('[ocr] Gemini failed, falling back to rule parser:', geminiError)
+
+    if (secrets.gemini_api_key) {
+      try {
+        result = await parseBusinessCardText({
+          apiKey: secrets.gemini_api_key,
+          rawText: ocr.rawText,
+        })
+        parser = 'gemini'
+      } catch (e) {
+        geminiError = e instanceof Error ? e.message : String(e)
+        console.warn('[ocr] Gemini failed, fallback to rule:', geminiError)
+        result = parseBusinessCardRawText(ocr.rawText)
+        parser = 'rule'
+      }
+    } else {
       result = parseBusinessCardRawText(ocr.rawText)
       parser = 'rule'
     }
 
+    // geminiError は内部詳細を含み得るため、UI には簡略化したメッセージだけ返す
+    if (geminiError) console.warn('[ocr] gemini fallback reason:', geminiError)
     return NextResponse.json({
       ...result,
-      _meta: { parser, geminiError },
+      _meta: { parser, gemini_failed: !!geminiError },
     })
   } catch (error) {
     console.error('[ocr] error:', error)

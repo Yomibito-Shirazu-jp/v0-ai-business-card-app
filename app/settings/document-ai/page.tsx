@@ -15,6 +15,7 @@ interface SettingsState {
   gcp_processor_id: string | null
   has_service_account: boolean
   service_account_email: string | null
+  has_gemini_api_key: boolean
   updated_at: string | null
 }
 
@@ -47,6 +48,7 @@ export default function DocumentAiSettingsPage() {
   const [location, setLocation] = useState("us")
   const [processorId, setProcessorId] = useState("")
   const [serviceAccountJson, setServiceAccountJson] = useState("")
+  const [geminiApiKey, setGeminiApiKey] = useState("")
 
   const fileRef = useRef<HTMLInputElement>(null)
   const testFileRef = useRef<HTMLInputElement>(null)
@@ -85,6 +87,9 @@ export default function DocumentAiSettingsPage() {
       if (serviceAccountJson.trim().length > 0) {
         body.gcp_service_account_json = serviceAccountJson.trim()
       }
+      if (geminiApiKey.trim().length > 0) {
+        body.gemini_api_key = geminiApiKey.trim()
+      }
       const res = await fetch("/api/settings/document-ai", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -94,6 +99,7 @@ export default function DocumentAiSettingsPage() {
       if (!res.ok || !data.success) throw new Error(data.error || "保存に失敗しました")
       setState(data)
       setServiceAccountJson("")
+      setGeminiApiKey("")
       setToast("保存しました")
       setTimeout(() => setToast(null), 3000)
     } catch (e) {
@@ -145,7 +151,7 @@ export default function DocumentAiSettingsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Google Document AI 設定</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            名刺の OCR を Google Document AI（テキスト抽出）+ Vertex AI Gemini（構造化）で実行します。
+            名刺の OCR を Google Document AI（テキスト抽出）+ Gemini API（構造化）で実行します。
             プロジェクト・プロセッサ・Service Account を 1 度登録すれば、社員全員の OCR がここを参照します。
           </p>
         </div>
@@ -188,6 +194,12 @@ export default function DocumentAiSettingsPage() {
                   Service Account:{" "}
                   <span className="text-foreground">
                     {state?.has_service_account ? state.service_account_email || "登録済み" : "未登録"}
+                  </span>
+                </div>
+                <div>
+                  Gemini API キー:{" "}
+                  <span className="text-foreground">
+                    {state?.has_gemini_api_key ? "登録済み ✓" : "未登録（ルールベース parser で動作）"}
                   </span>
                 </div>
                 {state?.updated_at && (
@@ -290,8 +302,33 @@ export default function DocumentAiSettingsPage() {
                     className="font-mono text-xs"
                   />
                   <p className="text-xs text-muted-foreground">
-                    JSON はサーバーで保存され、画面には二度と表示されません。Document AI と Vertex AI Gemini の両方で同じ Service Account を使います。
+                    JSON はサーバーで保存され、画面には二度と表示されません。Document AI の OCR 認証に使います。
                   </p>
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <Label htmlFor="gemini">Gemini API キー（推奨）</Label>
+                  <Input
+                    id="gemini"
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    placeholder={state?.has_gemini_api_key ? "登録済み（再入力で上書き）" : "AIzaSy..."}
+                    autoComplete="off"
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Document OCR が読み取った生テキストを Gemini で構造化（氏名 / 会社名 / 役職 / 住所 等）するためのキーです。
+                    未設定でも動きますが、ルールベース parser になるため精度が落ちます。
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    取得方法: <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary underline">https://aistudio.google.com/app/apikey</a> で 「Create API key」 をクリック →  AIzaSy で始まる文字列をコピーしてここに貼り付け。
+                  </p>
+                  {state?.has_gemini_api_key && (
+                    <Badge variant="outline" className="text-emerald-600 border-emerald-600 mt-1">
+                      Gemini API キー登録済み
+                    </Badge>
+                  )}
                 </div>
 
                 {error && (
