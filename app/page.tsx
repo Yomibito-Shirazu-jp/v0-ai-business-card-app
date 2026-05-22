@@ -480,11 +480,15 @@ export default function BusinessCardApp() {
         body: JSON.stringify({ image: imageBase64 }),
       })
 
-      if (!ocrResponse.ok) {
-        throw new Error('OCR処理に失敗しました')
-      }
-
       const ocrResult = await ocrResponse.json()
+
+      if (!ocrResponse.ok) {
+        const msg = ocrResult?.error || 'OCR処理に失敗しました'
+        if (ocrResult?.setup_required) {
+          throw new Error(`${msg} (Vercel の Settings → Environment Variables で AI_GATEWAY_API_KEY を設定してください)`)
+        }
+        throw new Error(msg)
+      }
       setScanProgress(60)
       setScanStatus("データ保存中...")
 
