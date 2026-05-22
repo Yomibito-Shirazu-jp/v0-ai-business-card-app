@@ -373,7 +373,7 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを取得（ページネーション対��）
+  // Supabaseから名刺データを取得（ページネーション対����）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -579,18 +579,30 @@ export default function BusinessCardApp() {
 
         let success = 0
         let failed = 0
-        for (let i = 0; i < pages.length; i++) {
-          const p = pages[i]
-          setScanStatus(`ページ ${p.pageNumber}/${pages.length} を解析中...`)
-          try {
-            await processBusinessCard(p.base64)
-            success++
-          } catch (err) {
-            console.error(`page ${p.pageNumber} 失敗:`, err)
-            failed++
+        let completed = 0
+        const CONCURRENCY = 3
+        const queue = [...pages]
+
+        const runWorker = async () => {
+          while (queue.length > 0) {
+            const p = queue.shift()
+            if (!p) break
+            try {
+              await processBusinessCard(p.base64)
+              success++
+            } catch (err) {
+              console.error(`page ${p.pageNumber} 失敗:`, err)
+              failed++
+            } finally {
+              completed++
+              setScanStatus(`AI読取り中 ${completed}/${pages.length}（成功 ${success} / 失敗 ${failed}）`)
+              setScanProgress(20 + Math.floor((completed / pages.length) * 75))
+            }
           }
-          setScanProgress(20 + Math.floor(((i + 1) / pages.length) * 75))
         }
+
+        const workers = Array.from({ length: Math.min(CONCURRENCY, pages.length) }, () => runWorker())
+        await Promise.all(workers)
         setScanStatus(`完了：成功 ${success} / 失敗 ${failed}`)
         setScanProgress(100)
         setTimeout(() => {

@@ -70,7 +70,7 @@ export async function GET() {
     id: null,
     name: user.user_metadata?.full_name || user.email?.split('@')[0] || '名無し',
     email: user.email || '',
-    plan: 'Free',
+    plan: '社員利用',
     role: null,
   })
 }
