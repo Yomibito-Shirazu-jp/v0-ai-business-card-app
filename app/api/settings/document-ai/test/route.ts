@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { processOcr } from '@/lib/document-ai'
-import { parseBusinessCardText } from '@/lib/gemini-parse'
+import { parseBusinessCardRawText } from '@/lib/parse-card'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 // テスト送信エンドポイント
-// 設定ページから 1 枚画像を送信してもらい、Document OCR + Gemini を実行し
+// 設定ページから 1 枚画像を送信してもらい、Document OCR + ローカル parser を実行し
 // どのステージで成功 / 失敗したかを返す。
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -42,18 +42,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: false,
       stage: 'config',
-      error: 'プロジェクト ID / プロセッサ ID / Service Account JSON のいずれかが未設定です。先に保存してください。',
+      error: 'プロジェクト ID / プロセッサ ID / Service Account JSON のいずれかが未設定です。',
     })
   }
 
   const body = await request.json().catch(() => ({}))
   const image: string | undefined = body.image
   if (!image) {
-    return NextResponse.json({
-      ok: false,
-      stage: 'input',
-      error: '画像を選択してください',
-    })
+    return NextResponse.json({ ok: false, stage: 'input', error: '画像を選択してください' })
   }
 
   let mimeType = 'image/jpeg'
@@ -64,7 +60,6 @@ export async function POST(request: NextRequest) {
     imageBase64 = m[2]
   }
 
-  // Stage 1: Document OCR
   let ocrResult
   try {
     ocrResult = await processOcr({
@@ -87,27 +82,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: false,
       stage: 'ocr',
-      error: 'Document OCR からテキストが返ってきませんでした (rawText が空)',
+      error: 'Document OCR からテキストが返ってきませんでした',
       ocr_meta: { pageCount: ocrResult.pageCount },
     })
   }
 
-  // Stage 2: Gemini parse
-  let parsed
-  try {
-    parsed = await parseBusinessCardText({
-      serviceAccountJson: secrets.gcp_service_account_json,
-      projectId: secrets.gcp_project_id,
-      rawText: ocrResult.rawText,
-    })
-  } catch (e) {
-    return NextResponse.json({
-      ok: false,
-      stage: 'gemini',
-      error: e instanceof Error ? e.message : String(e),
-      raw_text_preview: ocrResult.rawText.slice(0, 400),
-    })
-  }
+  const parsed = parseBusinessCardRawText(ocrResult.rawText)
 
   return NextResponse.json({
     ok: true,
