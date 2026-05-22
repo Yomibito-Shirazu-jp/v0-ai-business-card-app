@@ -28,7 +28,7 @@ export async function GET() {
       id,
       email,
       display_name,
-      display_name_kana,
+      name_kana,
       department,
       position,
       phone,
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json()
-  const { email, display_name, display_name_kana, department, position, role, phone, mobile, staff_id } = body
+  const { email, display_name, name_kana, department, position, role, phone, mobile, staff_id } = body
 
   if (!email) {
     return NextResponse.json({ success: false, error: 'メールアドレスは必須です' }, { status: 400 })
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       company_id: currentEmployee.company_id,
       email: email.toLowerCase(),
       display_name: display_name || null,
-      display_name_kana: display_name_kana || null,
+      name_kana: name_kana || null,
       department: department || null,
       position: position || null,
       role: role || 'member',

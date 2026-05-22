@@ -201,7 +201,7 @@ export default function BusinessCardApp() {
   // プロフィール編集フォーム
   const [profileForm, setProfileForm] = useState({
     display_name: '',
-    display_name_kana: '',
+    name_kana: '',
     phone: '',
     mobile: '',
     department: '',
@@ -214,7 +214,7 @@ export default function BusinessCardApp() {
     id: string
     email: string
     display_name: string | null
-    display_name_kana: string | null
+    name_kana: string | null
     department: string | null
     position: string | null
     phone: string | null
@@ -230,7 +230,7 @@ export default function BusinessCardApp() {
   const [inviteForm, setInviteForm] = useState({
     email: '',
     display_name: '',
-    display_name_kana: '',
+    name_kana: '',
     department: '',
     position: '',
     role: 'member',
@@ -251,7 +251,7 @@ export default function BusinessCardApp() {
           // プロフィールフォームに初期値設定
           setProfileForm({
             display_name: data.name || '',
-            display_name_kana: data.nameKana || '',
+            name_kana: data.nameKana || '',
             phone: data.phone || '',
             mobile: data.mobile || '',
             department: data.department || '',
@@ -329,7 +329,7 @@ export default function BusinessCardApp() {
       if (result.success) {
         setIsInviteDialogOpen(false)
         setInviteForm({
-          email: '', display_name: '', display_name_kana: '', department: '',
+          email: '', display_name: '', name_kana: '', department: '',
           position: '', role: 'member', phone: '', mobile: '', staff_id: '',
         })
         fetchEmployees()
@@ -372,7 +372,7 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを���得（ページネーション対応）
+  // Supabaseから名刺データを取得（ページネーション対応）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -480,11 +480,15 @@ export default function BusinessCardApp() {
         body: JSON.stringify({ image: imageBase64 }),
       })
 
-      if (!ocrResponse.ok) {
-        throw new Error('OCR処理に失敗しました')
-      }
-
       const ocrResult = await ocrResponse.json()
+
+      if (!ocrResponse.ok) {
+        const msg = ocrResult?.error || 'OCR処理に失敗しました'
+        if (ocrResult?.setup_required) {
+          throw new Error(`${msg} (Vercel の Settings → Environment Variables で AI_GATEWAY_API_KEY を設定してください)`)
+        }
+        throw new Error(msg)
+      }
       setScanProgress(60)
       setScanStatus("データ保存中...")
 
@@ -1230,78 +1234,136 @@ export default function BusinessCardApp() {
                     {employeesLoading ? (
                       <p className="text-muted-foreground text-center py-8">読み込み中...</p>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-3 px-2">氏名</th>
-                              <th className="text-left py-3 px-2">メール</th>
-                              <th className="text-left py-3 px-2">部署</th>
-                              <th className="text-left py-3 px-2">役職</th>
-                              <th className="text-left py-3 px-2">権限</th>
-                              <th className="text-left py-3 px-2">ステータス</th>
-                              <th className="text-left py-3 px-2">操作</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {employees.map((emp) => (
-                              <tr key={emp.id} className="border-b hover:bg-muted/50">
-                                <td className="py-3 px-2">
-                                  <div>
-                                    <p className="font-medium">{emp.display_name || '未設定'}</p>
-                                    {emp.display_name_kana && (
-                                      <p className="text-xs text-muted-foreground">{emp.display_name_kana}</p>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="py-3 px-2 text-muted-foreground">{emp.email}</td>
-                                <td className="py-3 px-2">{emp.department || '-'}</td>
-                                <td className="py-3 px-2">{emp.position || '-'}</td>
-                                <td className="py-3 px-2">
-                                  <Badge variant={emp.role === 'owner' ? 'default' : emp.role === 'admin' ? 'secondary' : 'outline'}>
-                                    {emp.role === 'owner' ? 'オーナー' : emp.role === 'admin' ? '管理者' : 'メンバー'}
-                                  </Badge>
-                                </td>
-                                <td className="py-3 px-2">
-                                  <Badge variant={emp.status === 'active' ? 'default' : emp.status === 'invited' ? 'secondary' : 'destructive'}>
-                                    {emp.status === 'active' ? 'アクティブ' : emp.status === 'invited' ? '招待中' : '停止中'}
-                                  </Badge>
-                                </td>
-                                <td className="py-3 px-2">
-                                  {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && emp.role !== 'owner' && (
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm">
-                                          <MoreHorizontal className="w-4 h-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        {emp.status === 'active' && (
-                                          <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'suspended')}>
-                                            アカウント停止
-                                          </DropdownMenuItem>
-                                        )}
-                                        {emp.status === 'suspended' && (
-                                          <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'active')}>
-                                            アカウント復活
-                                          </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          className="text-destructive"
-                                          onClick={() => handleDeleteEmployee(emp.id, emp.display_name || '')}
-                                        >
-                                          削除
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  )}
-                                </td>
+                      <>
+                        {/* デスクトップ: テーブル */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-3 px-2">氏名</th>
+                                <th className="text-left py-3 px-2">メール</th>
+                                <th className="text-left py-3 px-2">部署</th>
+                                <th className="text-left py-3 px-2">役職</th>
+                                <th className="text-left py-3 px-2">権限</th>
+                                <th className="text-left py-3 px-2">ステータス</th>
+                                <th className="text-left py-3 px-2">操作</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {employees.map((emp) => (
+                                <tr key={emp.id} className="border-b hover:bg-muted/50">
+                                  <td className="py-3 px-2">
+                                    <div>
+                                      <p className="font-medium">{emp.display_name || '未設定'}</p>
+                                      {emp.name_kana && (
+                                        <p className="text-xs text-muted-foreground">{emp.name_kana}</p>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-2 text-muted-foreground">{emp.email}</td>
+                                  <td className="py-3 px-2">{emp.department || '-'}</td>
+                                  <td className="py-3 px-2">{emp.position || '-'}</td>
+                                  <td className="py-3 px-2">
+                                    <Badge variant={emp.role === 'owner' ? 'default' : emp.role === 'admin' ? 'secondary' : 'outline'}>
+                                      {emp.role === 'owner' ? 'オーナー' : emp.role === 'admin' ? '管理者' : 'メンバー'}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <Badge variant={emp.status === 'active' ? 'default' : emp.status === 'invited' ? 'secondary' : 'destructive'}>
+                                      {emp.status === 'active' ? 'アクティブ' : emp.status === 'invited' ? '招待中' : '停止中'}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && emp.role !== 'owner' && (
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm">
+                                            <MoreHorizontal className="w-4 h-4" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          {emp.status === 'active' && (
+                                            <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'suspended')}>
+                                              アカウント停止
+                                            </DropdownMenuItem>
+                                          )}
+                                          {emp.status === 'suspended' && (
+                                            <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'active')}>
+                                              アカウント復活
+                                            </DropdownMenuItem>
+                                          )}
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            className="text-destructive"
+                                            onClick={() => handleDeleteEmployee(emp.id, emp.display_name || '')}
+                                          >
+                                            削除
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* モバイル: カードリスト */}
+                        <div className="md:hidden space-y-3">
+                          {employees.map((emp) => (
+                            <div key={emp.id} className="border border-border rounded-lg p-3 space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium truncate">{emp.display_name || '未設定'}</p>
+                                  {emp.name_kana && (
+                                    <p className="text-xs text-muted-foreground truncate">{emp.name_kana}</p>
+                                  )}
+                                  <p className="text-xs text-muted-foreground truncate">{emp.email}</p>
+                                </div>
+                                {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && emp.role !== 'owner' && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0">
+                                        <MoreHorizontal className="w-4 h-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {emp.status === 'active' && (
+                                        <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'suspended')}>
+                                          アカウント停止
+                                        </DropdownMenuItem>
+                                      )}
+                                      {emp.status === 'suspended' && (
+                                        <DropdownMenuItem onClick={() => handleUpdateEmployeeStatus(emp.id, 'active')}>
+                                          アカウント復活
+                                        </DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive"
+                                        onClick={() => handleDeleteEmployee(emp.id, emp.display_name || '')}
+                                      >
+                                        削除
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 text-xs">
+                                <Badge variant={emp.role === 'owner' ? 'default' : emp.role === 'admin' ? 'secondary' : 'outline'}>
+                                  {emp.role === 'owner' ? 'オーナー' : emp.role === 'admin' ? '管理者' : 'メンバー'}
+                                </Badge>
+                                <Badge variant={emp.status === 'active' ? 'default' : emp.status === 'invited' ? 'secondary' : 'destructive'}>
+                                  {emp.status === 'active' ? 'アクティブ' : emp.status === 'invited' ? '招待中' : '停止中'}
+                                </Badge>
+                                {emp.department && <Badge variant="outline">{emp.department}</Badge>}
+                                {emp.position && <Badge variant="outline">{emp.position}</Badge>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
                     )}
                   </CardContent>
                 </Card>
@@ -1334,8 +1396,8 @@ export default function BusinessCardApp() {
                         <div>
                           <label className="text-sm font-medium">フリガナ</label>
                           <Input
-                            value={inviteForm.display_name_kana}
-                            onChange={(e) => setInviteForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                            value={inviteForm.name_kana}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, name_kana: e.target.value }))}
                             placeholder="ヤマダ タロウ"
                           />
                         </div>
@@ -1516,7 +1578,7 @@ export default function BusinessCardApp() {
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium">��名</label>
+                        <label className="text-sm font-medium">氏名</label>
                         <Input
                           value={profileForm.display_name}
                           onChange={(e) => setProfileForm(prev => ({ ...prev, display_name: e.target.value }))}
@@ -1526,8 +1588,8 @@ export default function BusinessCardApp() {
                       <div>
                         <label className="text-sm font-medium">フリガナ</label>
                         <Input
-                          value={profileForm.display_name_kana}
-                          onChange={(e) => setProfileForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                          value={profileForm.name_kana}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, name_kana: e.target.value }))}
                           placeholder="ヤマダ タロウ"
                         />
                       </div>
@@ -1835,7 +1897,7 @@ export default function BusinessCardApp() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder="名前、会社名、メ���ルで検索..."
+                    placeholder="名前、会社名、メールで検索..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 bg-background"

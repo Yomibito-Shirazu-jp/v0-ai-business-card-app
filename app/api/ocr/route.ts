@@ -4,17 +4,25 @@ import { gateway } from '@ai-sdk/gateway'
 import type { OCRResult } from '@/lib/supabase/types'
 
 export async function POST(request: NextRequest) {
+  // AI Gateway 認証情報がないと動かないため、明確に 503 で返す
+  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
+    return NextResponse.json(
+      {
+        error:
+          'OCR エンジンが未設定です。Vercel の環境変数に AI_GATEWAY_API_KEY を設定してください。',
+        setup_required: true,
+      },
+      { status: 503 }
+    )
+  }
+
   try {
     const { image } = await request.json()
 
     if (!image) {
-      return NextResponse.json(
-        { error: '画像データが必要です' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: '画像データが必要です' }, { status: 400 })
     }
 
-    // AI SDKでOCR + 構造化データ抽出
     const { text } = await generateText({
       model: gateway('openai/gpt-4o-mini'),
       messages: [
@@ -58,28 +66,19 @@ export async function POST(request: NextRequest) {
       ],
     })
 
-    // JSONをパース
     let ocrResult: OCRResult
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        throw new Error('JSON not found in response')
-      }
+      if (!jsonMatch) throw new Error('JSON not found in response')
       ocrResult = JSON.parse(jsonMatch[0])
     } catch {
-      ocrResult = {
-        raw_text: text,
-        confidence: 0.5,
-      }
+      ocrResult = { raw_text: text, confidence: 0.5 }
     }
 
     return NextResponse.json(ocrResult)
-
   } catch (error) {
     console.error('OCR error:', error)
-    return NextResponse.json(
-      { error: 'OCR処理に失敗しました' },
-      { status: 500 }
-    )
+    const message = error instanceof Error ? error.message : 'OCR処理に失敗しました'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

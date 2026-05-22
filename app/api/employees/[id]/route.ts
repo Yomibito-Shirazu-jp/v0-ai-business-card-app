@@ -50,7 +50,7 @@ export async function PATCH(
   // 本人が更新可能なフィールド
   if (isSelf || isAdmin) {
     if (body.display_name !== undefined) allowedFields.display_name = body.display_name
-    if (body.display_name_kana !== undefined) allowedFields.display_name_kana = body.display_name_kana
+    if (body.name_kana !== undefined) allowedFields.name_kana = body.name_kana
     if (body.phone !== undefined) allowedFields.phone = body.phone
     if (body.mobile !== undefined) allowedFields.mobile = body.mobile
   }
