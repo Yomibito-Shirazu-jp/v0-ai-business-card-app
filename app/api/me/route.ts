@@ -121,7 +121,7 @@ export async function PATCH(request: NextRequest) {
   const { data, error } = await supabase
     .from('employees')
     .update(updateData)
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .select()
     .single()
 

@@ -811,7 +811,6 @@ export default function BusinessCardApp() {
                       </Avatar>
                       <div className="flex-1 text-left">
                         <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
-                        <p className="text-xs text-muted-foreground">{currentUser?.plan || ""}</p>
                       </div>
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
                     </button>
