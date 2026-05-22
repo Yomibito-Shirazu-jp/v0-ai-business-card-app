@@ -47,7 +47,10 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabase
         .from('business_cards')
         .insert({
+          company_id: employee.company_id,
+          owner_employee_id: employee.id,
           user_id: user.id,
+          source: 'manual',
           full_name: entry.full_name || null,
           full_name_kana: entry.full_name_kana || null,
           company_name: entry.company_name || null,
