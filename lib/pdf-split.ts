@@ -53,6 +53,9 @@ export async function pdfFileToPageImages(
     worker: { port: workerPort } as any,
     isEvalSupported: false,
     disableFontFace: false,
+    // 日本語 PDF の CJK フォント (Adobe-Japan1 等) のために cMap を同梱配信
+    cMapUrl: '/cmaps/',
+    cMapPacked: true,
   })
 
   let pdf: any

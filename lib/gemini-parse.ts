@@ -26,7 +26,7 @@ export async function parseBusinessCardText(opts: {
   model?: string
 }): Promise<OCRResult> {
   const { serviceAccountJson, projectId, rawText } = opts
-  const model = opts.model || 'gemini-1.5-flash-002'
+  const model = opts.model || 'gemini-2.0-flash-001'
 
   const token = await getGoogleAccessToken(serviceAccountJson)
   const url =
