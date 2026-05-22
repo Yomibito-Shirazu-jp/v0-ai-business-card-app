@@ -201,7 +201,7 @@ export default function BusinessCardApp() {
   // プロフィール編集フォーム
   const [profileForm, setProfileForm] = useState({
     display_name: '',
-    display_name_kana: '',
+    name_kana: '',
     phone: '',
     mobile: '',
     department: '',
@@ -214,7 +214,7 @@ export default function BusinessCardApp() {
     id: string
     email: string
     display_name: string | null
-    display_name_kana: string | null
+    name_kana: string | null
     department: string | null
     position: string | null
     phone: string | null
@@ -230,7 +230,7 @@ export default function BusinessCardApp() {
   const [inviteForm, setInviteForm] = useState({
     email: '',
     display_name: '',
-    display_name_kana: '',
+    name_kana: '',
     department: '',
     position: '',
     role: 'member',
@@ -251,7 +251,7 @@ export default function BusinessCardApp() {
           // プロフィールフォームに初期値設定
           setProfileForm({
             display_name: data.name || '',
-            display_name_kana: data.nameKana || '',
+            name_kana: data.nameKana || '',
             phone: data.phone || '',
             mobile: data.mobile || '',
             department: data.department || '',
@@ -329,7 +329,7 @@ export default function BusinessCardApp() {
       if (result.success) {
         setIsInviteDialogOpen(false)
         setInviteForm({
-          email: '', display_name: '', display_name_kana: '', department: '',
+          email: '', display_name: '', name_kana: '', department: '',
           position: '', role: 'member', phone: '', mobile: '', staff_id: '',
         })
         fetchEmployees()
@@ -1251,8 +1251,8 @@ export default function BusinessCardApp() {
                                   <td className="py-3 px-2">
                                     <div>
                                       <p className="font-medium">{emp.display_name || '未設定'}</p>
-                                      {emp.display_name_kana && (
-                                        <p className="text-xs text-muted-foreground">{emp.display_name_kana}</p>
+                                      {emp.name_kana && (
+                                        <p className="text-xs text-muted-foreground">{emp.name_kana}</p>
                                       )}
                                     </div>
                                   </td>
@@ -1312,8 +1312,8 @@ export default function BusinessCardApp() {
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <p className="font-medium truncate">{emp.display_name || '未設定'}</p>
-                                  {emp.display_name_kana && (
-                                    <p className="text-xs text-muted-foreground truncate">{emp.display_name_kana}</p>
+                                  {emp.name_kana && (
+                                    <p className="text-xs text-muted-foreground truncate">{emp.name_kana}</p>
                                   )}
                                   <p className="text-xs text-muted-foreground truncate">{emp.email}</p>
                                 </div>
@@ -1392,8 +1392,8 @@ export default function BusinessCardApp() {
                         <div>
                           <label className="text-sm font-medium">フリガナ</label>
                           <Input
-                            value={inviteForm.display_name_kana}
-                            onChange={(e) => setInviteForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                            value={inviteForm.name_kana}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, name_kana: e.target.value }))}
                             placeholder="ヤマダ タロウ"
                           />
                         </div>
@@ -1584,8 +1584,8 @@ export default function BusinessCardApp() {
                       <div>
                         <label className="text-sm font-medium">フリガナ</label>
                         <Input
-                          value={profileForm.display_name_kana}
-                          onChange={(e) => setProfileForm(prev => ({ ...prev, display_name_kana: e.target.value }))}
+                          value={profileForm.name_kana}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, name_kana: e.target.value }))}
                           placeholder="ヤマダ タロウ"
                         />
                       </div>
