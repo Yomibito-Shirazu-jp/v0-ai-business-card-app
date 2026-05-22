@@ -134,6 +134,16 @@ export default function BusinessCardApp() {
   const [currentView, setCurrentView] = useState<string>("cards")
   // モバイル: サイドバーを Drawer (Sheet) で開閉
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  // ビューポートが md (>=768px) 未満かどうか。Sheet の overlay が desktop で誤って出る問題への対処。
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mql = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(mql.matches)
+    update()
+    mql.addEventListener('change', update)
+    return () => mql.removeEventListener('change', update)
+  }, [])
   const [analyticsTab, setAnalyticsTab] = useState<string>("overview")
 
   // URL クエリで初期ビュー/タブを反映（/network → analytics?tab=network のリダイレクト先など）
@@ -2477,7 +2487,7 @@ export default function BusinessCardApp() {
                         {detailBody}
                       </aside>
                       {/* モバイル: 下からスライドアップ Sheet（全画面） */}
-                      <Sheet open={!!selectedCard} onOpenChange={(open) => { if (!open) setSelectedCard(null) }}>
+                      <Sheet open={isMobile && !!selectedCard} onOpenChange={(open) => { if (!open) setSelectedCard(null) }}>
                         <SheetContent
                           side="bottom"
                           className="md:hidden p-0 h-[92dvh] flex flex-col bg-card [&>button]:hidden"
