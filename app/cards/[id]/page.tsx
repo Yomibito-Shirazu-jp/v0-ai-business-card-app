@@ -19,6 +19,9 @@ import {
   Newspaper,
   Star,
   Sparkles,
+  Wand2,
+  Copy,
+  Check,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -87,6 +90,50 @@ export default function CardDetailPage({ params }: { params: Promise<{ id: strin
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<Partial<BusinessCard>>({})
+
+  // --- AI 提案 ---
+  type Suggestion = {
+    email_subject: string
+    email_body: string
+    talking_points: string[]
+    follow_up: string
+  }
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
+  const [suggesting, setSuggesting] = useState(false)
+  const [purpose, setPurpose] =
+    useState<"first_contact" | "follow_up" | "sales">("first_contact")
+  const [copied, setCopied] = useState<"subject" | "body" | null>(null)
+
+  async function generateSuggestion() {
+    setSuggesting(true)
+    setSuggestion(null)
+    try {
+      const res = await fetch("/api/card-ai-suggest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cardId: id, purpose }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.suggestion) {
+        throw new Error(json.error || "生成に失敗しました")
+      }
+      setSuggestion(json.suggestion as Suggestion)
+    } catch (e) {
+      toast({
+        title: "AI提案の生成に失敗しました",
+        description: (e as Error).message,
+        variant: "destructive",
+      })
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  async function copyText(label: "subject" | "body", text: string) {
+    await navigator.clipboard.writeText(text)
+    setCopied(label)
+    setTimeout(() => setCopied(null), 1500)
+  }
 
   function startEdit() {
     if (!card) return
@@ -236,6 +283,9 @@ export default function CardDetailPage({ params }: { params: Promise<{ id: strin
       <Tabs defaultValue="info" className="mx-auto mt-3 max-w-3xl px-4">
         <TabsList className="w-full">
           <TabsTrigger value="info" className="flex-1">基本情報</TabsTrigger>
+          <TabsTrigger value="ai" className="flex-1">
+            <Wand2 className="mr-1 h-3 w-3" />AI提案
+          </TabsTrigger>
           <TabsTrigger value="company" className="flex-1">
             <Sparkles className="mr-1 h-3 w-3" />会社
           </TabsTrigger>
@@ -313,6 +363,135 @@ export default function CardDetailPage({ params }: { params: Promise<{ id: strin
               </AlertDialogContent>
             </AlertDialog>
           </div>
+        </TabsContent>
+
+        <TabsContent value="ai" className="pt-3 space-y-3">
+          <Card className="p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Wand2 className="h-4 w-4 text-primary" />
+              AIに提案させる
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              会社情報・メモ・最新ニュースを踏まえ、初回メールや会話のきっかけを下書きします。
+            </p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(
+                [
+                  { v: "first_contact", l: "初回挨拶" },
+                  { v: "follow_up", l: "フォロー" },
+                  { v: "sales", l: "提案/営業" },
+                ] as const
+              ).map((opt) => (
+                <Button
+                  key={opt.v}
+                  type="button"
+                  variant={purpose === opt.v ? "default" : "outline"}
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setPurpose(opt.v)}
+                >
+                  {opt.l}
+                </Button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              className="mt-3 w-full"
+              onClick={generateSuggestion}
+              disabled={suggesting}
+            >
+              {suggesting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  AIが下書き中...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  下書きを生成
+                </>
+              )}
+            </Button>
+          </Card>
+
+          {suggestion && (
+            <>
+              <Card className="space-y-2 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">件名</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyText("subject", suggestion.email_subject)}
+                  >
+                    {copied === "subject" ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-sm font-medium">{suggestion.email_subject}</p>
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-xs font-medium text-muted-foreground">本文</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyText("body", suggestion.email_body)}
+                  >
+                    {copied === "body" ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {suggestion.email_body}
+                </p>
+                {card.email && (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 w-full bg-transparent"
+                  >
+                    <a
+                      href={`mailto:${card.email}?subject=${encodeURIComponent(
+                        suggestion.email_subject,
+                      )}&body=${encodeURIComponent(suggestion.email_body)}`}
+                    >
+                      <Mail className="mr-2 h-4 w-4" />
+                      この内容でメールを開く
+                    </a>
+                  </Button>
+                )}
+              </Card>
+
+              <Card className="space-y-2 p-4">
+                <p className="text-xs font-medium text-muted-foreground">
+                  会話アイスブレイク
+                </p>
+                <ul className="space-y-2">
+                  {suggestion.talking_points.map((tp, i) => (
+                    <li key={i} className="flex gap-2 text-sm leading-snug">
+                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                        {i + 1}
+                      </span>
+                      <span>{tp}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+
+              <Card className="space-y-1 p-4">
+                <p className="text-xs font-medium text-muted-foreground">
+                  フォローアップ提案
+                </p>
+                <p className="text-sm leading-relaxed">{suggestion.follow_up}</p>
+              </Card>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="company" className="pt-3">
