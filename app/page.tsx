@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
+import Link from "next/link"
 import {
   Search,
   Plus,
@@ -824,6 +825,14 @@ export default function BusinessCardApp() {
                       <Settings className="w-4 h-4 mr-2" />
                       設定
                     </DropdownMenuItem>
+                    {(currentUser?.role === "owner" || currentUser?.role === "admin") && (
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings/document-ai">
+                          <Settings className="w-4 h-4 mr-2" />
+                          OCR エンジン設定
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={async () => {
                       await fetch('/api/logout', { method: 'POST' })
