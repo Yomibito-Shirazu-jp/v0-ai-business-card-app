@@ -15,7 +15,7 @@ export async function POST() {
   const { error } = await supabase
     .from('employees')
     .update({ status: 'suspended' })
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
