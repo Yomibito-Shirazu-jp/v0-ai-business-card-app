@@ -9,8 +9,14 @@ const nextConfig = {
     remotePatterns: [],
   },
   typedRoutes: true,
+  // Next.js 16 / Turbopack の canvas モジュール解決を空ファイルに飛ばす
+  turbopack: {
+    resolveAlias: {
+      canvas: './lib/empty.js',
+    },
+  },
   webpack(config) {
-    // pdfjs-dist が node の canvas モジュールを参照しないようにする
+    // 旧来の webpack ビルド時にも canvas を参照しないようにする
     config.resolve.alias = { ...(config.resolve.alias || {}), canvas: false }
     return config
   },
