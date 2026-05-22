@@ -1,11 +1,46 @@
 "use client"
 
 // クライアントサイド PDF → 画像分割ユーティリティ
-// pdfjs-dist は SSR で動かないため、必ず動的 import で読み込む
+// Next.js + Turbopack/Webpack で確実に worker を起動するため、
+// new Worker(new URL(...), { type: 'module' }) で明示的にワーカーを渡す。
 
 export type PdfPageImage = {
   pageNumber: number
   base64: string // data:image/jpeg;base64,...
+}
+
+let pdfjsLibPromise: Promise<any> | null = null
+
+async function loadPdfjs(): Promise<any> {
+  if (typeof window === 'undefined') {
+    throw new Error('PDF処理はブラウザ上でのみ可能です')
+  }
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = (async () => {
+      // メインモジュール（mjs）。Turbopack/Webpack 5 ともに module worker をバンドルできる版
+      const pdfjs: any = await import('pdfjs-dist/build/pdf.mjs')
+
+      // 1) workerSrc を public 配信のローカルファイルに固定（fake worker フォールバック時にも CDN を見ない）
+      pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
+      // 2) 可能であれば、本物のワーカーを workerPort として直接渡す
+      try {
+        // Turbopack/Webpack はこの URL をビルド時に解決し、worker チャンクを生成する
+        const workerUrl = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url,
+        )
+        const worker = new Worker(workerUrl, { type: 'module' })
+        pdfjs.GlobalWorkerOptions.workerPort = worker
+      } catch (e) {
+        // 失敗しても workerSrc によるフォールバックが効く
+        console.warn('[pdf-split] inline worker 起動失敗、workerSrc にフォールバック:', e)
+      }
+
+      return pdfjs
+    })()
+  }
+  return pdfjsLibPromise
 }
 
 export async function pdfFileToPageImages(
@@ -14,21 +49,12 @@ export async function pdfFileToPageImages(
     scale?: number
     quality?: number
     onProgress?: (current: number, total: number) => void
-  }
+  },
 ): Promise<PdfPageImage[]> {
-  if (typeof window === 'undefined') {
-    throw new Error('PDF処理はブラウザ上でのみ可能です')
-  }
-
   const scale = options?.scale ?? 2
   const quality = options?.quality ?? 0.92
 
-  // 動的 import（webpack ライセンスを回避するため legacy build を使う）
-  const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-
-  // worker 設定：常に同オリジンの public/pdf.worker.min.mjs を使用
-  // （HMR / モジュールキャッシュで以前の CDN URL が残るのを防ぐため、毎回上書きする）
-  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+  const pdfjs = await loadPdfjs()
 
   const arrayBuffer = await file.arrayBuffer()
   const loadingTask = pdfjs.getDocument({
@@ -58,7 +84,6 @@ export async function pdfFileToPageImages(
     const base64 = canvas.toDataURL('image/jpeg', quality)
     results.push({ pageNumber: i, base64 })
 
-    // 解放
     canvas.width = 0
     canvas.height = 0
     page.cleanup?.()
