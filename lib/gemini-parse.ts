@@ -112,6 +112,6 @@ export async function parseBusinessCardText(opts: {
     twitter: s(parsed.twitter),
     facebook: s(parsed.facebook),
     raw_text: rawText,
-    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,
+    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
   }
 }

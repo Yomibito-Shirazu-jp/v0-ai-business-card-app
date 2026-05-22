@@ -90,7 +90,26 @@ export async function POST(request: NextRequest) {
     })
 
     if (!ocr.rawText || ocr.rawText.trim().length === 0) {
-      const empty: OCRResult = { raw_text: '', confidence: 0 }
+      const empty: OCRResult = {
+        full_name: undefined,
+        full_name_kana: undefined,
+        company_name: undefined,
+        company_name_kana: undefined,
+        department: undefined,
+        position: undefined,
+        email: undefined,
+        phone: undefined,
+        mobile: undefined,
+        fax: undefined,
+        postal_code: undefined,
+        address: undefined,
+        website: undefined,
+        linkedin: undefined,
+        twitter: undefined,
+        facebook: undefined,
+        raw_text: '',
+        confidence: 0,
+      }
       return NextResponse.json(empty)
     }
 
@@ -117,9 +136,11 @@ export async function POST(request: NextRequest) {
       parser = 'rule'
     }
 
+    // geminiError は内部詳細を含み得るため、UI には簡略化したメッセージだけ返す
+    if (geminiError) console.warn('[ocr] gemini fallback reason:', geminiError)
     return NextResponse.json({
       ...result,
-      _meta: { parser, geminiError },
+      _meta: { parser, gemini_failed: !!geminiError },
     })
   } catch (error) {
     console.error('[ocr] error:', error)

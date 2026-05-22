@@ -109,7 +109,6 @@ const GOOGLE_SERVICES = [
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
   { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
-  { name: "スキャン", icon: ScanLine, href: "#", active: false, view: "scan" },
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
@@ -962,7 +961,6 @@ export default function BusinessCardApp() {
                 {currentView === "cards" && "名刺一覧"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
-                {currentView === "scan" && "スキャン"}
                 {currentView === "tags" && "タグ管理"}
                 {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
@@ -2158,62 +2156,6 @@ export default function BusinessCardApp() {
           )}
 
           {/* スキャンビュー */}
-          {currentView === "scan" && (
-            <div className="flex-1 p-4 md:p-6 overflow-auto flex items-center justify-center">
-              <Card className="max-w-md w-full">
-                <CardHeader className="text-center">
-                  <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
-                  <CardTitle>AI 名刺スキャン</CardTitle>
-                  <CardDescription>名刺をカメラまたはファイルからスキャンしてください</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    accept="image/*"
-                    capture="environment"
-                  />
-                  {scanError && (
-                    <div className="p-3 mb-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
-                      {scanError}
-                    </div>
-                  )}
-                  {isScanning ? (
-                    <div className="space-y-4">
-                      <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
-                        <div className="text-center">
-                          <Sparkles className="w-8 h-8 text-primary mx-auto mb-2 animate-pulse" />
-                          <p className="text-sm text-muted-foreground">AI が名刺を解析中...</p>
-                        </div>
-                      </div>
-                      <Progress value={scanProgress} className="h-2" />
-                      <p className="text-xs text-center text-muted-foreground">{scanStatus || `処理中... ${scanProgress}%`}</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      <button
-                        onClick={handleCameraCapture}
-                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <Camera className="w-8 h-8 text-muted-foreground" />
-                        <span className="text-sm font-medium">カメラで撮影</span>
-                      </button>
-                      <button
-                        onClick={handleFileUpload}
-                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <Upload className="w-8 h-8 text-muted-foreground" />
-                        <span className="text-sm font-medium">ファイルを選択</span>
-                      </button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
           {/* 名刺一覧ビュー */}
           {currentView === "cards" && (
             <>

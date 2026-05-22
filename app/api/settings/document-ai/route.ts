@@ -108,16 +108,21 @@ export async function PUT(request: NextRequest) {
     }
     update.gcp_service_account_json = body.gcp_service_account_json
   }
-  if (typeof body.gemini_api_key === 'string' && body.gemini_api_key.trim().length > 0) {
-    // 形式チェック (AIza で始まる場合が多い、最低 30 文字)
+  if (typeof body.gemini_api_key === 'string') {
     const k = body.gemini_api_key.trim()
-    if (k.length < 20) {
-      return NextResponse.json(
-        { success: false, error: 'Gemini API キーが短すぎます' },
-        { status: 400 },
-      )
+    if (k.length === 0) {
+      // 明示的に空文字を送ると削除
+      update.gemini_api_key = null
+    } else {
+      // Google AI Studio の API キーは AIza で始まる 39 文字
+      if (!/^AIza[0-9A-Za-z_-]{35}$/.test(k)) {
+        return NextResponse.json(
+          { success: false, error: 'Gemini API キーの形式が不正です (AIza で始まる 39 文字を貼り付けてください)' },
+          { status: 400 },
+        )
+      }
+      update.gemini_api_key = k
     }
-    update.gemini_api_key = k
   }
 
   if (Object.keys(update).length === 0) {
