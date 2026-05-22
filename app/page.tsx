@@ -70,6 +70,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
 import { NetworkGraph } from "@/components/network-graph"
+import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
 interface BusinessCard {
@@ -1661,7 +1662,7 @@ export default function BusinessCardApp() {
                       }}
                       disabled={isSavingProfile}
                     >
-                      {isSavingProfile ? '保存中...' : '保存'}
+                      {isSavingProfile ? '��存中...' : '保存'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -2316,6 +2317,15 @@ export default function BusinessCardApp() {
                         </div>
 
                         <Separator />
+
+                        {/* 企業情報・ニュース（自動取得） */}
+                        {selectedCard.company && (
+                          <>
+                            <CompanyInfoSection companyName={selectedCard.company} />
+                            <CompanyNewsSection companyName={selectedCard.company} />
+                            <Separator />
+                          </>
+                        )}
 
                         {/* メタ情報 */}
                         <div className="space-y-3">
