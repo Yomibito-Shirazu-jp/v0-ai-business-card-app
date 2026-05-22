@@ -75,7 +75,35 @@ export async function POST(request: NextRequest) {
       ],
     })
 
-    const ocr = experimental_output as OCRResult
+    if (!experimental_output) {
+      return NextResponse.json(
+        { error: 'OCR エンジンから構造化レスポンスを取得できませんでした' },
+        { status: 502 },
+      )
+    }
+
+    // zod の null を OCRResult (string | undefined) に正規化
+    const raw = experimental_output as z.infer<typeof schema>
+    const ocr: OCRResult = {
+      full_name: raw.full_name ?? undefined,
+      full_name_kana: raw.full_name_kana ?? undefined,
+      company_name: raw.company_name ?? undefined,
+      company_name_kana: raw.company_name_kana ?? undefined,
+      department: raw.department ?? undefined,
+      position: raw.position ?? undefined,
+      email: raw.email ?? undefined,
+      phone: raw.phone ?? undefined,
+      mobile: raw.mobile ?? undefined,
+      fax: raw.fax ?? undefined,
+      postal_code: raw.postal_code ?? undefined,
+      address: raw.address ?? undefined,
+      website: raw.website ?? undefined,
+      linkedin: raw.linkedin ?? undefined,
+      twitter: raw.twitter ?? undefined,
+      facebook: raw.facebook ?? undefined,
+      raw_text: raw.raw_text ?? '',
+      confidence: typeof raw.confidence === 'number' ? raw.confidence : 0,
+    }
     return NextResponse.json(ocr)
   } catch (error) {
     console.error('[ocr] error:', error)
