@@ -26,11 +26,9 @@ export async function pdfFileToPageImages(
   // 動的 import（webpack ライセンスを回避するため legacy build を使う）
   const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
 
-  // worker 設定（CDN を利用：バンドル肥大を避ける）
+  // worker 設定：同オリジンの public/pdf.worker.min.mjs を使用（CDN 不一致による失敗を回避）
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    const version: string = pdfjs.version
-    pdfjs.GlobalWorkerOptions.workerSrc =
-      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.mjs`
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
   }
 
   const arrayBuffer = await file.arrayBuffer()
