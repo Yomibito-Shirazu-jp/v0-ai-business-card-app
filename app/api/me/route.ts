@@ -17,7 +17,7 @@ export async function GET() {
     .select(`
       id,
       display_name,
-      display_name_kana,
+      name_kana,
       email,
       role,
       avatar_url,
@@ -34,14 +34,14 @@ export async function GET() {
       status,
       created_at
     `)
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .single()
 
   if (employee) {
     return NextResponse.json({
       id: employee.id,
       name: employee.display_name || user.email?.split('@')[0] || '名無し',
-      nameKana: employee.display_name_kana || '',
+      nameKana: employee.name_kana || '',
       email: employee.email || user.email || '',
       plan: employee.role === 'owner' ? 'Owner' : employee.role === 'admin' ? 'Admin' : 'Standard',
       role: employee.role,
@@ -90,7 +90,7 @@ export async function PATCH(request: NextRequest) {
   // 更新可能なフィールドのみ抽出
   const allowedFields = [
     'display_name',
-    'display_name_kana',
+    'name_kana',
     'avatar_url',
     'phone',
     'mobile',

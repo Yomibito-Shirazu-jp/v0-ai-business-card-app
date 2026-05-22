@@ -372,7 +372,7 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを���得（ページネーション対応）
+  // Supabaseから名刺データを取得（ページネーション対応）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -1574,7 +1574,7 @@ export default function BusinessCardApp() {
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium">��名</label>
+                        <label className="text-sm font-medium">氏名</label>
                         <Input
                           value={profileForm.display_name}
                           onChange={(e) => setProfileForm(prev => ({ ...prev, display_name: e.target.value }))}
@@ -1893,7 +1893,7 @@ export default function BusinessCardApp() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder="名前、会社名、メ���ルで検索..."
+                    placeholder="名前、会社名、メールで検索..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 bg-background"
@@ -2138,7 +2138,7 @@ export default function BusinessCardApp() {
                   )}
                 </ScrollArea>
 
-                {/* 詳細パネル：デスクトップは右固定 aside、モバイ���は Sheet で全画面オーバーレイ */}
+                {/* 詳細パネル：デスクトップは右固定 aside、モバイルは Sheet で全画面オーバーレイ */}
                 {selectedCard && (() => {
                   const detailHeader = (
                     <div className="p-4 border-b border-border flex items-center justify-between">
