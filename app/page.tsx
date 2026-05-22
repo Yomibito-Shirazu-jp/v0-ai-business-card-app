@@ -131,7 +131,7 @@ export default function BusinessCardApp() {
   const [scanProgress, setScanProgress] = useState(0)
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
-  const [currentView, setCurrentView] = useState<string>("cards")
+  const [currentView, setCurrentView] = useState<string>("dashboard")
   // モバイル: サイドバーを Drawer (Sheet) で開閉
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [analyticsTab, setAnalyticsTab] = useState<string>("overview")
@@ -142,6 +142,11 @@ export default function BusinessCardApp() {
     const params = new URLSearchParams(window.location.search)
     const view = params.get("view")
     const tab = params.get("tab")
+    // 名刺一覧は専用ページに集約済み。/?view=cards で来たら /cards に即リダイレクト
+    if (view === "cards") {
+      window.location.replace("/cards")
+      return
+    }
     if (view) setCurrentView(view)
     if (tab) setAnalyticsTab(tab)
   }, [])
@@ -374,7 +379,7 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを取得（ページネーション対������）
+  // Supabaseから名刺データを取得（ページネ��ション対������）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -888,7 +893,6 @@ export default function BusinessCardApp() {
                 <Menu className="w-5 h-5" />
               </Button>
               <h2 className="text-lg md:text-xl font-semibold truncate">
-                {currentView === "cards" && "名刺一覧"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
                 {currentView === "scan" && "スキャン"}
@@ -896,11 +900,6 @@ export default function BusinessCardApp() {
                 {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
               </h2>
-              {currentView === "cards" && (
-                <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
-                  {filteredCards.length} / {totalCount.toLocaleString()} 件
-                </Badge>
-              )}
             </div>
 
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
