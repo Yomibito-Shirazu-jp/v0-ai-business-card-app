@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "app/api/ocr/route.ts": { "maxDuration": 60 },
+    "app/api/business-cards/route.ts": { "maxDuration": 30 },
+    "app/api/company-profile/route.ts": { "maxDuration": 60 },
+    "app/api/company-news/route.ts": { "maxDuration": 60 }
+  }
+}

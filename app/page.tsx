@@ -373,7 +373,7 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを取得（ページネーション対応）
+  // Supabaseから名刺データを取得（ページネーション対����）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -548,17 +548,80 @@ export default function BusinessCardApp() {
     }
   }, [])
 
-  // ファイル選択ハンドラ
+  // ファイル選択ハンドラ（画像 / PDF 両対応）
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // 入力値をクリア（同じファイル再選択を許可）
+    e.target.value = ''
 
     try {
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+      if (isPdf) {
+        setIsScanning(true)
+        setScanError(null)
+        setScanProgress(2)
+        setScanStatus('PDFを読み込み中...')
+
+        const { pdfFileToPageImages } = await import('@/lib/pdf-split')
+        const pages = await pdfFileToPageImages(file, {
+          scale: 2,
+          quality: 0.9,
+          onProgress: (cur, total) => {
+            setScanStatus(`PDFを画像化中 (${cur}/${total})`)
+            setScanProgress(2 + Math.floor((cur / total) * 18))
+          },
+        })
+
+        if (pages.length === 0) {
+          throw new Error('PDFにページが見つかりませんでした')
+        }
+
+        let success = 0
+        let failed = 0
+        let completed = 0
+        const CONCURRENCY = 3
+        const queue = [...pages]
+
+        const runWorker = async () => {
+          while (queue.length > 0) {
+            const p = queue.shift()
+            if (!p) break
+            try {
+              await processBusinessCard(p.base64)
+              success++
+            } catch (err) {
+              console.error(`page ${p.pageNumber} 失敗:`, err)
+              failed++
+            } finally {
+              completed++
+              setScanStatus(`AI読取り中 ${completed}/${pages.length}（成功 ${success} / 失敗 ${failed}）`)
+              setScanProgress(20 + Math.floor((completed / pages.length) * 75))
+            }
+          }
+        }
+
+        const workers = Array.from({ length: Math.min(CONCURRENCY, pages.length) }, () => runWorker())
+        await Promise.all(workers)
+        setScanStatus(`完了：成功 ${success} / 失敗 ${failed}`)
+        setScanProgress(100)
+        setTimeout(() => {
+          setIsScanning(false)
+          setScanProgress(0)
+          setScanStatus('')
+        }, 1200)
+        if (failed > 0 && success === 0) {
+          setScanError(`${failed}ページの解析に失敗しました`)
+        }
+        return
+      }
+
       const base64 = await imageToBase64(file)
       await processBusinessCard(base64)
     } catch (error) {
       console.error('ファイル読み込みエラー:', error)
-      setScanError('ファイルの読み込みに失敗しました')
+      setScanError(error instanceof Error ? error.message : 'ファイルの読み込みに失敗しました')
+      setIsScanning(false)
     }
   }, [processBusinessCard])
 
@@ -571,11 +634,11 @@ export default function BusinessCardApp() {
     }
   }, [])
 
-  // ファイル選択起動
+  // ファイル選択起動（画像 / PDF）
   const handleFileUpload = useCallback(() => {
     if (fileInputRef.current) {
       fileInputRef.current.removeAttribute('capture')
-      fileInputRef.current.accept = "image/*"
+      fileInputRef.current.accept = "image/*,application/pdf,.pdf"
       fileInputRef.current.click()
     }
   }, [])
