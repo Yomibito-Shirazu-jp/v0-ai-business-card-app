@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 
-// admin/owner ガード + company_id 解決
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -39,18 +38,18 @@ export async function GET() {
 
   const { data: row } = await supabase
     .from('company_secrets')
-    .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json, updated_at')
+    .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json, gemini_api_key, updated_at')
     .eq('company_id', employee.company_id)
     .single()
 
   if (!row) {
-    // 行が無い場合は空を返す (会社作成直後など)
     return NextResponse.json({
       gcp_project_id: null,
       gcp_location: 'us',
       gcp_processor_id: null,
       has_service_account: false,
       service_account_email: null,
+      has_gemini_api_key: false,
       updated_at: null,
     })
   }
@@ -61,6 +60,7 @@ export async function GET() {
     gcp_processor_id: row.gcp_processor_id,
     has_service_account: !!row.gcp_service_account_json,
     service_account_email: extractClientEmail(row.gcp_service_account_json),
+    has_gemini_api_key: !!row.gemini_api_key,
     updated_at: row.updated_at,
   })
 }
@@ -108,6 +108,17 @@ export async function PUT(request: NextRequest) {
     }
     update.gcp_service_account_json = body.gcp_service_account_json
   }
+  if (typeof body.gemini_api_key === 'string' && body.gemini_api_key.trim().length > 0) {
+    // 形式チェック (AIza で始まる場合が多い、最低 30 文字)
+    const k = body.gemini_api_key.trim()
+    if (k.length < 20) {
+      return NextResponse.json(
+        { success: false, error: 'Gemini API キーが短すぎます' },
+        { status: 400 },
+      )
+    }
+    update.gemini_api_key = k
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ success: false, error: '更新する項目がありません' }, { status: 400 })
@@ -116,7 +127,6 @@ export async function PUT(request: NextRequest) {
   update.updated_by = employee.id
   update.updated_at = new Date().toISOString()
 
-  // upsert: 行が無い会社にも対応
   const { error } = await supabase
     .from('company_secrets')
     .upsert({ company_id: employee.company_id, ...update }, { onConflict: 'company_id' })
@@ -128,10 +138,9 @@ export async function PUT(request: NextRequest) {
     )
   }
 
-  // 再取得して返す
   const { data: row } = await supabase
     .from('company_secrets')
-    .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json, updated_at')
+    .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json, gemini_api_key, updated_at')
     .eq('company_id', employee.company_id)
     .single()
 
@@ -142,6 +151,7 @@ export async function PUT(request: NextRequest) {
     gcp_processor_id: row?.gcp_processor_id ?? null,
     has_service_account: !!row?.gcp_service_account_json,
     service_account_email: extractClientEmail(row?.gcp_service_account_json),
+    has_gemini_api_key: !!row?.gemini_api_key,
     updated_at: row?.updated_at ?? null,
   })
 }

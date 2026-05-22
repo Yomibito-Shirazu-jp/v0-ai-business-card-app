@@ -127,6 +127,15 @@ export default function BusinessCardApp() {
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [isScanDialogOpen, setIsScanDialogOpen] = useState(false)
+  // スキャン後の確認モーダル用: OCR 完了直後、保存前にユーザーに見せる候補
+  const [pendingScan, setPendingScan] = useState<{
+    ocrResult: any
+    imageBase64: string
+    parser?: string
+    geminiError?: string
+  } | null>(null)
+  const [pendingEdit, setPendingEdit] = useState<Record<string, string>>({})
+  const [savingPending, setSavingPending] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
   const [scanStatus, setScanStatus] = useState<string>("")
@@ -476,7 +485,71 @@ export default function BusinessCardApp() {
     })
   }
 
-  // OCR実行 → DB保存
+  // OCR を実行して結果を返すだけ。保存はしない（confirm modal で確認後に saveOcrResult が呼ぶ）
+  const runOcrOnly = useCallback(async (imageBase64: string) => {
+    setIsScanning(true)
+    setScanProgress(10)
+    setScanStatus("OCR解析中...")
+    setScanError(null)
+    try {
+      setScanProgress(40)
+      const ocrResponse = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 }),
+      })
+      const ocrResult = await ocrResponse.json()
+      if (!ocrResponse.ok) {
+        const msg = ocrResult?.error || 'OCR処理に失敗しました'
+        throw new Error(msg)
+      }
+      setScanProgress(100)
+      setIsScanning(false)
+      setScanStatus("")
+      return ocrResult
+    } catch (e) {
+      setIsScanning(false)
+      setScanStatus("")
+      setScanProgress(0)
+      throw e
+    }
+  }, [])
+
+  // 単一画像/カメラスキャン: OCR 完了後、確認モーダルを表示してユーザーに保存可否を判断させる
+  const processSingleScanWithConfirm = useCallback(async (imageBase64: string) => {
+    try {
+      const ocrResult = await runOcrOnly(imageBase64)
+      const { _meta, ...rest } = ocrResult || {}
+      setPendingScan({
+        ocrResult: rest,
+        imageBase64,
+        parser: _meta?.parser,
+        geminiError: _meta?.geminiError,
+      })
+      // 編集フォームを初期値で埋める
+      setPendingEdit({
+        full_name: rest.full_name || '',
+        full_name_kana: rest.full_name_kana || '',
+        company_name: rest.company_name || '',
+        company_name_kana: rest.company_name_kana || '',
+        department: rest.department || '',
+        position: rest.position || '',
+        email: rest.email || '',
+        phone: rest.phone || '',
+        mobile: rest.mobile || '',
+        fax: rest.fax || '',
+        postal_code: rest.postal_code || '',
+        address: rest.address || '',
+        website: rest.website || '',
+      })
+      setIsScanDialogOpen(false)
+    } catch (error) {
+      console.error('OCR エラー:', error)
+      setScanError(error instanceof Error ? error.message : 'OCR に失敗しました')
+    }
+  }, [runOcrOnly])
+
+  // PDF 用の一括処理（旧 processBusinessCard 相当）— 各ページを OCR → 即保存
   const processBusinessCard = useCallback(async (imageBase64: string) => {
     setIsScanning(true)
     setScanProgress(10)
@@ -484,7 +557,6 @@ export default function BusinessCardApp() {
     setScanError(null)
 
     try {
-      // OCR API呼び出し
       setScanProgress(30)
       const ocrResponse = await fetch('/api/ocr', {
         method: 'POST',
@@ -496,9 +568,6 @@ export default function BusinessCardApp() {
 
       if (!ocrResponse.ok) {
         const msg = ocrResult?.error || 'OCR処理に失敗しました'
-        if (ocrResult?.setup_required) {
-          throw new Error(`${msg} (Vercel の Settings → Environment Variables で AI_GATEWAY_API_KEY を設定してください)`)
-        }
         throw new Error(msg)
       }
       setScanProgress(60)
@@ -631,13 +700,13 @@ export default function BusinessCardApp() {
       }
 
       const base64 = await imageToBase64(file)
-      await processBusinessCard(base64)
+      await processSingleScanWithConfirm(base64)
     } catch (error) {
       console.error('ファイル読み込みエラー:', error)
       setScanError(error instanceof Error ? error.message : 'ファイルの読み込みに失敗しました')
       setIsScanning(false)
     }
-  }, [processBusinessCard])
+  }, [processBusinessCard, processSingleScanWithConfirm])
 
   // カメラ起動
   const handleCameraCapture = useCallback(() => {
@@ -983,6 +1052,179 @@ export default function BusinessCardApp() {
                         </button>
                       </div>
                     )}
+
+                    {/* 最近スキャンした名刺 (直近 5 件) */}
+                    {!isScanning && cards.length > 0 && (
+                      <div className="pt-2 border-t border-border space-y-2">
+                        <p className="text-xs text-muted-foreground">最近スキャンした名刺</p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {cards.slice(0, 5).map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                setSelectedCard(c)
+                                setIsScanDialogOpen(false)
+                              }}
+                              className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/40 transition-colors"
+                            >
+                              <Avatar className="w-7 h-7">
+                                <AvatarFallback className="bg-primary/10 text-primary text-[10px]">
+                                  {(c.name || "?").slice(0, 2)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{c.name || "不明"}</p>
+                                <p className="text-xs text-muted-foreground truncate">{c.company || "—"}</p>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {c.createdAt instanceof Date ? c.createdAt.toLocaleDateString("ja-JP") : ""}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* スキャン結果確認ダイアログ: OCR 後、保存前にユーザーが内容を確認・編集する */}
+              <Dialog
+                open={!!pendingScan}
+                onOpenChange={(open) => { if (!open) { setPendingScan(null) } }}
+              >
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                      スキャン結果の確認
+                    </DialogTitle>
+                    <DialogDescription>
+                      AI が抽出した内容です。間違っていれば修正してから登録できます。
+                      {pendingScan?.parser === 'rule' && (
+                        <span className="block mt-1 text-xs text-amber-600">
+                          ※ Gemini が使えないためルールベース parser で抽出しています。精度は低めです。
+                        </span>
+                      )}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {pendingScan && (
+                    <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">氏名</label>
+                          <Input value={pendingEdit.full_name || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, full_name: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">ふりがな</label>
+                          <Input value={pendingEdit.full_name_kana || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, full_name_kana: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">会社名</label>
+                        <Input value={pendingEdit.company_name || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, company_name: e.target.value }))} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">部署</label>
+                          <Input value={pendingEdit.department || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, department: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">役職</label>
+                          <Input value={pendingEdit.position || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, position: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">メール</label>
+                          <Input value={pendingEdit.email || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, email: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">電話</label>
+                          <Input value={pendingEdit.phone || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, phone: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">携帯</label>
+                          <Input value={pendingEdit.mobile || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, mobile: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">FAX</label>
+                          <Input value={pendingEdit.fax || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, fax: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">住所</label>
+                        <Input value={pendingEdit.address || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, address: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Webサイト</label>
+                        <Input value={pendingEdit.website || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, website: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      disabled={savingPending}
+                      onClick={() => { setPendingScan(null); setPendingEdit({}) }}
+                    >
+                      いいえ（登録しない）
+                    </Button>
+                    <Button
+                      disabled={savingPending}
+                      onClick={async () => {
+                        if (!pendingScan) return
+                        setSavingPending(true)
+                        try {
+                          const merged = { ...pendingScan.ocrResult, ...pendingEdit }
+                          const saveResponse = await fetch('/api/business-cards', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ocrResult: merged, imageUrl: pendingScan.imageBase64 }),
+                          })
+                          const saveResult = await saveResponse.json()
+                          if (!saveResult.success) {
+                            throw new Error(saveResult.error || '保存に失敗しました')
+                          }
+                          const newCard: BusinessCard = {
+                            id: saveResult.data.id,
+                            name: saveResult.data.full_name || "不明",
+                            nameKana: saveResult.data.full_name_kana || "",
+                            company: saveResult.data.company_name || "",
+                            department: saveResult.data.department || "",
+                            position: saveResult.data.position || "",
+                            email: saveResult.data.email || "",
+                            phone: saveResult.data.phone || "",
+                            mobile: saveResult.data.mobile || "",
+                            address: saveResult.data.address || "",
+                            website: saveResult.data.website || "",
+                            linkedin: saveResult.data.linkedin || "",
+                            twitter: saveResult.data.twitter || "",
+                            notes: saveResult.data.notes || "",
+                            tags: saveResult.data.tags || [],
+                            isFavorite: saveResult.data.is_favorite || false,
+                            createdAt: new Date(saveResult.data.created_at),
+                            imageUrl: saveResult.data.image_url || "",
+                            syncedToGoogle: false,
+                          }
+                          setCards(prev => [newCard, ...prev])
+                          setTotalCount(prev => prev + 1)
+                          setSelectedCard(newCard)
+                          setPendingScan(null)
+                          setPendingEdit({})
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : '保存に失敗しました')
+                        } finally {
+                          setSavingPending(false)
+                        }
+                      }}
+                    >
+                      {savingPending ? '保存中...' : 'はい（登録する）'}
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
