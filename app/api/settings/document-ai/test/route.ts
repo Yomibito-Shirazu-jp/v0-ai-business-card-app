@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { processOcr } from '@/lib/document-ai'
+import { parseBusinessCardText } from '@/lib/gemini-parse'
 import { parseBusinessCardRawText } from '@/lib/parse-card'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-// テスト送信エンドポイント
-// 設定ページから 1 枚画像を送信してもらい、Document OCR + ローカル parser を実行し
-// どのステージで成功 / 失敗したかを返す。
+// テスト送信: Document OCR → (Gemini → fallback rule parser) の両方を実行し
+// それぞれの成功/失敗と抽出結果を返す。
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -83,14 +83,29 @@ export async function POST(request: NextRequest) {
       ok: false,
       stage: 'ocr',
       error: 'Document OCR からテキストが返ってきませんでした',
-      ocr_meta: { pageCount: ocrResult.pageCount },
     })
   }
 
-  const parsed = parseBusinessCardRawText(ocrResult.rawText)
+  let parsed
+  let parser: 'gemini' | 'rule'
+  let geminiError: string | undefined
+  try {
+    parsed = await parseBusinessCardText({
+      serviceAccountJson: secrets.gcp_service_account_json,
+      projectId: secrets.gcp_project_id,
+      rawText: ocrResult.rawText,
+    })
+    parser = 'gemini'
+  } catch (e) {
+    geminiError = e instanceof Error ? e.message : String(e)
+    parsed = parseBusinessCardRawText(ocrResult.rawText)
+    parser = 'rule'
+  }
 
   return NextResponse.json({
     ok: true,
+    parser,
+    geminiError,
     raw_text_preview: ocrResult.rawText.slice(0, 400),
     page_count: ocrResult.pageCount,
     parsed,

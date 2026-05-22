@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { processOcr } from '@/lib/document-ai'
+import { parseBusinessCardText } from '@/lib/gemini-parse'
 import { parseBusinessCardRawText } from '@/lib/parse-card'
+import type { OCRResult } from '@/lib/supabase/types'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
 // 名刺 OCR API
-// Google Document AI (Document OCR processor) で raw_text を取得し、
-// サーバ側のルールベース parser で構造化する。
-// Vertex AI / Gemini / OpenAI / Anthropic は使わない。
-// 認証情報は company_secrets テーブルから読む。
+// 1. Document OCR で生テキスト取得
+// 2. Vertex AI Gemini で構造化 (主)
+// 3. Gemini が失敗したら lib/parse-card.ts の正規表現で構造化 (fallback)
+// 設定情報は company_secrets テーブルから読む。
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
       imageBase64 = m[2]
     }
 
-    // 1. Document AI で生テキスト取得
+    // 1. Document OCR で生テキスト
     const ocr = await processOcr({
       serviceAccountJson: secrets.gcp_service_account_json,
       projectId: secrets.gcp_project_id,
@@ -89,22 +91,34 @@ export async function POST(request: NextRequest) {
     })
 
     if (!ocr.rawText || ocr.rawText.trim().length === 0) {
-      return NextResponse.json({
-        full_name: undefined,
-        company_name: undefined,
-        raw_text: '',
-        confidence: 0,
-      })
+      const empty: OCRResult = { raw_text: '', confidence: 0 }
+      return NextResponse.json(empty)
     }
 
-    // 2. ルールベース parser で構造化
-    const result = parseBusinessCardRawText(ocr.rawText)
+    // 2. Gemini 主 → 失敗時は parser fallback
+    let result: OCRResult
+    let parser = 'gemini' as 'gemini' | 'rule'
+    let geminiError: string | undefined
+    try {
+      result = await parseBusinessCardText({
+        serviceAccountJson: secrets.gcp_service_account_json,
+        projectId: secrets.gcp_project_id,
+        rawText: ocr.rawText,
+      })
+    } catch (e) {
+      geminiError = e instanceof Error ? e.message : String(e)
+      console.warn('[ocr] Gemini failed, falling back to rule parser:', geminiError)
+      result = parseBusinessCardRawText(ocr.rawText)
+      parser = 'rule'
+    }
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      ...result,
+      _meta: { parser, geminiError },
+    })
   } catch (error) {
     console.error('[ocr] error:', error)
-    const message =
-      error instanceof Error ? error.message : 'OCR 処理に失敗しました'
+    const message = error instanceof Error ? error.message : 'OCR 処理に失敗しました'
     return NextResponse.json(
       { success: false, error: message, code: 'OCR_FAILED' },
       { status: 500 },
