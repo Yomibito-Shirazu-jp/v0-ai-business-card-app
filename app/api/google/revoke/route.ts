@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   const { data: employee } = await supabase
     .from('employees')
     .select('disabled_google_services')
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .single()
 
   if (!employee) {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     .update({ 
       disabled_google_services: [...currentDisabled, service] 
     })
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -74,7 +74,7 @@ export async function DELETE(request: NextRequest) {
   const { data: employee } = await supabase
     .from('employees')
     .select('disabled_google_services')
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .single()
 
   if (!employee) {
@@ -89,7 +89,7 @@ export async function DELETE(request: NextRequest) {
     .update({ 
       disabled_google_services: currentDisabled.filter((s: string) => s !== service) 
     })
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

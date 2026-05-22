@@ -43,6 +43,12 @@ export async function GET() {
       name: employee.display_name || user.email?.split('@')[0] || '名無し',
       nameKana: employee.name_kana || '',
       email: employee.email || user.email || '',
+      plan:
+        employee.role === 'owner'
+          ? '経営者'
+          : employee.role === 'admin'
+            ? '管理者'
+            : '社員',
       role: employee.role,
       avatarUrl: employee.avatar_url,
       phone: employee.phone,
@@ -69,6 +75,7 @@ export async function GET() {
     id: null,
     name: user.user_metadata?.full_name || user.email?.split('@')[0] || '名無し',
     email: user.email || '',
+    plan: '社員',
     role: null,
   })
 }
@@ -114,7 +121,7 @@ export async function PATCH(request: NextRequest) {
   const { data, error } = await supabase
     .from('employees')
     .update(updateData)
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .select()
     .single()
 

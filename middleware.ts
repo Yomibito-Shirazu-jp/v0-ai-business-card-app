@@ -9,7 +9,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 静的アセット・画像・auth コールバック自身は除外
-    '/((?!_next/static|_next/image|favicon|icon|apple-icon|placeholder|api/auth|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // 静的アセット・画像・worker・auth コールバック自身は除外
+    '/((?!_next/static|_next/image|favicon|icon|apple-icon|placeholder|api/auth|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mjs|js|css|map|woff|woff2|ttf|otf|eot|wasm)$).*)',
   ],
 }
