@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { processOcr } from '@/lib/document-ai'
-import { parseBusinessCardText } from '@/lib/gemini-parse'
-import type { OCRResult } from '@/lib/supabase/types'
+import { parseBusinessCardRawText } from '@/lib/parse-card'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
 // 名刺 OCR API
-// 1. Google Document AI (Document OCR processor) で生テキストを取り出す
-// 2. Vertex AI Gemini で構造化 JSON に整形する
-// Service Account / project_id / processor_id は company_secrets テーブルから読む。
-// .env / AI_GATEWAY_API_KEY 等の依存は無い。
+// Google Document AI (Document OCR processor) で raw_text を取得し、
+// サーバ側のルールベース parser で構造化する。
+// Vertex AI / Gemini / OpenAI / Anthropic は使わない。
+// 認証情報は company_secrets テーブルから読む。
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // 認証 + company_id
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json(
@@ -63,7 +61,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 入力: { image: dataURL or base64 } を受け取る
     const body = await request.json()
     const image: string | undefined = body.image
     if (!image || typeof image !== 'string') {
@@ -73,7 +70,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // data URL から mimeType を抽出。生 base64 のときは jpeg と仮定。
     let mimeType = 'image/jpeg'
     let imageBase64 = image
     const m = image.match(/^data:([^;]+);base64,(.+)$/)
@@ -82,7 +78,7 @@ export async function POST(request: NextRequest) {
       imageBase64 = m[2]
     }
 
-    // 1. Document AI で OCR
+    // 1. Document AI で生テキスト取得
     const ocr = await processOcr({
       serviceAccountJson: secrets.gcp_service_account_json,
       projectId: secrets.gcp_project_id,
@@ -93,20 +89,16 @@ export async function POST(request: NextRequest) {
     })
 
     if (!ocr.rawText || ocr.rawText.trim().length === 0) {
-      // テキストが取れなかった場合も保存可能な形で返す
-      const empty: OCRResult = {
+      return NextResponse.json({
+        full_name: undefined,
+        company_name: undefined,
         raw_text: '',
         confidence: 0,
-      }
-      return NextResponse.json(empty)
+      })
     }
 
-    // 2. Gemini で構造化
-    const result = await parseBusinessCardText({
-      serviceAccountJson: secrets.gcp_service_account_json,
-      projectId: secrets.gcp_project_id,
-      rawText: ocr.rawText,
-    })
+    // 2. ルールベース parser で構造化
+    const result = parseBusinessCardRawText(ocr.rawText)
 
     return NextResponse.json(result)
   } catch (error) {
