@@ -373,7 +373,7 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを取得（ページネーション対����）
+  // Supabaseから名刺データを取得（ページネーション対������）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
@@ -533,6 +533,9 @@ export default function BusinessCardApp() {
       setCards(prev => [newCard, ...prev])
       setScanProgress(100)
       setScanStatus("完了!")
+
+      // 単一読み込み（カメラ/画像）時は詳細パネルを自動で開いて確認できるようにする
+      setSelectedCard(newCard)
 
       setTimeout(() => {
         setIsScanDialogOpen(false)

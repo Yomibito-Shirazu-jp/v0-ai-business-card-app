@@ -1,46 +1,34 @@
 "use client"
 
 // クライアントサイド PDF → 画像分割ユーティリティ
-// Next.js + Turbopack/Webpack で確実に worker を起動するため、
-// new Worker(new URL(...), { type: 'module' }) で明示的にワーカーを渡す。
+//
+// 重要: Next.js + Turbopack/Webpack で fake worker フォールバック失敗を起こさないため、
+//   - workerSrc に同オリジン (/pdf.worker.min.mjs) を固定
+//   - workerPort に同オリジンから生成した module Worker インスタンスを直接渡す
+// の両方を併用する。
+// `new URL('pdfjs-dist/...', import.meta.url)` 経由は Turbopack でうまく解決できない場合があり、
+// 結果として CDN 取得 → 失敗 → fake worker 不能 となるため使用しない。
 
 export type PdfPageImage = {
   pageNumber: number
   base64: string // data:image/jpeg;base64,...
 }
 
-let pdfjsLibPromise: Promise<any> | null = null
+const WORKER_PUBLIC_PATH = '/pdf.worker.min.mjs'
 
 async function loadPdfjs(): Promise<any> {
   if (typeof window === 'undefined') {
     throw new Error('PDF処理はブラウザ上でのみ可能です')
   }
-  if (!pdfjsLibPromise) {
-    pdfjsLibPromise = (async () => {
-      // メインモジュール（mjs）。Turbopack/Webpack 5 ともに module worker をバンドルできる版
-      const pdfjs: any = await import('pdfjs-dist/build/pdf.mjs')
+  // 通常 (mjs) ビルドを使用。legacy だと worker と API が噛み合わず "Setting up fake worker failed" の原因になる。
+  const pdfjs: any = await import('pdfjs-dist/build/pdf.mjs')
+  pdfjs.GlobalWorkerOptions.workerSrc = WORKER_PUBLIC_PATH
+  return pdfjs
+}
 
-      // 1) workerSrc を public 配信のローカルファイルに固定（fake worker フォールバック時にも CDN を見ない）
-      pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-
-      // 2) 可能であれば、本物のワーカーを workerPort として直接渡す
-      try {
-        // Turbopack/Webpack はこの URL をビルド時に解決し、worker チャンクを生成する
-        const workerUrl = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url,
-        )
-        const worker = new Worker(workerUrl, { type: 'module' })
-        pdfjs.GlobalWorkerOptions.workerPort = worker
-      } catch (e) {
-        // 失敗しても workerSrc によるフォールバックが効く
-        console.warn('[pdf-split] inline worker 起動失敗、workerSrc にフォールバック:', e)
-      }
-
-      return pdfjs
-    })()
-  }
-  return pdfjsLibPromise
+function createWorkerPort(): Worker {
+  const url = new URL(WORKER_PUBLIC_PATH, window.location.origin).toString()
+  return new Worker(url, { type: 'module' })
 }
 
 export async function pdfFileToPageImages(
@@ -56,43 +44,57 @@ export async function pdfFileToPageImages(
 
   const pdfjs = await loadPdfjs()
 
+  // 1 ドキュメントごとに専用の Worker を生成して渡す（fake worker 経路を一切通さない）
+  const workerPort = createWorkerPort()
+
   const arrayBuffer = await file.arrayBuffer()
   const loadingTask = pdfjs.getDocument({
     data: arrayBuffer,
+    worker: { port: workerPort } as any,
     isEvalSupported: false,
     disableFontFace: false,
   })
 
-  const pdf = await loadingTask.promise
+  let pdf: any
+  try {
+    pdf = await loadingTask.promise
+  } catch (err) {
+    try { workerPort.terminate() } catch {}
+    throw err
+  }
+
   const total = pdf.numPages
   const results: PdfPageImage[] = []
 
-  for (let i = 1; i <= total; i++) {
-    const page = await pdf.getPage(i)
-    const viewport = page.getViewport({ scale })
+  try {
+    for (let i = 1; i <= total; i++) {
+      const page = await pdf.getPage(i)
+      const viewport = page.getViewport({ scale })
 
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.floor(viewport.width)
-    canvas.height = Math.floor(viewport.height)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      throw new Error('Canvas 2D コンテキストを取得できませんでした')
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.floor(viewport.width)
+      canvas.height = Math.floor(viewport.height)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('Canvas 2D コンテキストを取得できませんでした')
+      }
+
+      await page.render({ canvasContext: ctx, viewport }).promise
+
+      const base64 = canvas.toDataURL('image/jpeg', quality)
+      results.push({ pageNumber: i, base64 })
+
+      canvas.width = 0
+      canvas.height = 0
+      page.cleanup?.()
+
+      options?.onProgress?.(i, total)
     }
-
-    await page.render({ canvasContext: ctx, viewport }).promise
-
-    const base64 = canvas.toDataURL('image/jpeg', quality)
-    results.push({ pageNumber: i, base64 })
-
-    canvas.width = 0
-    canvas.height = 0
-    page.cleanup?.()
-
-    options?.onProgress?.(i, total)
+  } finally {
+    try { await pdf.cleanup?.() } catch {}
+    try { await pdf.destroy?.() } catch {}
+    try { workerPort.terminate() } catch {}
   }
-
-  await pdf.cleanup?.()
-  await pdf.destroy?.()
 
   return results
 }
