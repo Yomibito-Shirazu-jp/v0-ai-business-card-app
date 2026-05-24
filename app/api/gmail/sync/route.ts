@@ -135,7 +135,7 @@ export async function POST() {
         message_count_365d: agg.m365,
         last_message_at: new Date(agg.last).toISOString(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'company_id,employee_id,business_card_id' })
+      }, { onConflict: 'business_card_id,contact_email' })
     if (!error) updated++
   }
 
