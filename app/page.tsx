@@ -112,7 +112,8 @@ const GOOGLE_SERVICES = [
 // サイドバーナビゲーション
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
-  { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
+  { name: "マイ名刺帳", icon: Briefcase, href: "#", active: false, view: "cards_mine" },
+  { name: "会社の名刺帳", icon: Briefcase, href: "#", active: true, view: "cards" },
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "アシスタント", icon: Sparkles, href: "/assistant", active: false, view: "assistant_link" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
@@ -967,7 +968,8 @@ export default function BusinessCardApp() {
                 <Menu className="w-5 h-5" />
               </Button>
               <h2 className="text-lg md:text-xl font-semibold truncate">
-                {currentView === "cards" && "名刺一覧"}
+                {currentView === "cards" && "会社の名刺帳"}
+                {currentView === "cards_mine" && "マイ名刺帳"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
                 {currentView === "employees" && "社員管理"}
@@ -2163,6 +2165,49 @@ export default function BusinessCardApp() {
 
           {/* スキャンビュー */}
           {/* 名刺一覧ビュー */}
+          {currentView === "cards_mine" && (
+            <div className="flex-1 overflow-auto p-4 md:p-6">
+              <div className="max-w-6xl mx-auto space-y-5">
+                {/* 業務モデル明記バナー */}
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+                  <span className="font-medium text-emerald-700">名刺Plus は名刺の継続購入特典として提供しています。</span>
+                  <span className="text-muted-foreground"> 経営者または社員の名刺発注が継続している間、分析機能を含む全ての機能をご利用いただけます。</span>
+                </div>
+                <Tabs defaultValue="my-card" className="w-full">
+                  <TabsList className="grid grid-cols-3 max-w-md">
+                    <TabsTrigger value="my-card">自分の名刺</TabsTrigger>
+                    <TabsTrigger value="collected">集めた名刺</TabsTrigger>
+                    <TabsTrigger value="orders">発注履歴</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="my-card" className="mt-5">
+                    <MyCardDesigner />
+                  </TabsContent>
+                  <TabsContent value="collected" className="mt-5">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      自分でスキャン / 手動追加した名刺の一覧です。CSV 一括インポートしたものは「会社の名刺帳」に出ます。
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {cards.length === 0 ? (
+                        <p className="text-muted-foreground col-span-full py-12 text-center">まだ名刺がありません。右上の「名刺をスキャン」から登録してください。</p>
+                      ) : cards.map(c => (
+                        <Card key={c.id} className="cursor-pointer hover:border-primary" onClick={() => setSelectedCard(c)}>
+                          <CardContent className="pt-4 space-y-1">
+                            <div className="font-medium">{c.name}</div>
+                            <div className="text-sm text-muted-foreground">{c.company}</div>
+                            {c.email && <div className="text-xs text-muted-foreground truncate">{c.email}</div>}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="orders" className="mt-5">
+                    <MyCardOrdersList />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </div>
+          )}
+
           {currentView === "cards" && (
             <>
               {/* ツールバー */}
