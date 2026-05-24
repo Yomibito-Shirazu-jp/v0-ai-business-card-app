@@ -74,6 +74,7 @@ import { NetworkGraph } from "@/components/network-graph"
 import { OverviewView } from "@/components/analytics/overview-view"
 import { ContactsView } from "@/components/analytics/contacts-view"
 import { ColdView } from "@/components/analytics/cold-view"
+import { IndustryClassifyCard } from "@/components/admin/industry-classify-card"
 import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
@@ -1847,6 +1848,11 @@ export default function BusinessCardApp() {
                     </p>
                   </CardContent>
                 </Card>
+
+                {/* データ整備 (管理者のみ) */}
+                {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && (
+                  <IndustryClassifyCard />
+                )}
 
                 {/* プロフィール */}
                 <Card>
