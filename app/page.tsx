@@ -2170,9 +2170,10 @@ export default function BusinessCardApp() {
               <div className="max-w-6xl mx-auto space-y-5">
                 {/* 業務モデル明記バナー */}
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
-                  <span className="font-medium text-emerald-700">名刺Plus は名刺の継続購入特典として提供しています。</span>
-                  <span className="text-muted-foreground"> 経営者または社員の名刺発注が継続している間、分析機能を含む全ての機能をご利用いただけます。</span>
+                  <span className="font-medium text-emerald-700">名刺Plus はサブスク型 — ¥1,950 / 月 + 名刺 50 枚発注で全機能利用可</span>
+                  <span className="text-muted-foreground"> 名刺の継続発注が利用条件です。発注が途絶えると分析機能を含むサービスが停止します。</span>
                 </div>
+                <SubscriptionCard />
                 <Tabs defaultValue="my-card" className="w-full">
                   <TabsList className="grid grid-cols-3 max-w-md">
                     <TabsTrigger value="my-card">自分の名刺</TabsTrigger>
