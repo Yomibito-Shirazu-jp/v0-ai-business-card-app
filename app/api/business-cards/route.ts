@@ -162,15 +162,35 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
     const tag = searchParams.get('tag') || ''
+    const scope = searchParams.get('scope') || 'company' // 'company' | 'mine'
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500)
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // RLS が company_id を自動でフィルタ。WHERE は付けない
+    // 自分のemployeeレコード (scope=mine 用)
+    let currentEmployeeId: string | null = null
+    if (scope === 'mine') {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .eq('status', 'active')
+        .single()
+      currentEmployeeId = emp?.id ?? null
+    }
+
+    // RLS が company_id を自動でフィルタ
     let query = supabase
       .from('business_cards')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
+
+    if (scope === 'mine') {
+      if (!currentEmployeeId) {
+        return NextResponse.json({ success: true, data: [], count: 0 })
+      }
+      query = query.eq('owner_employee_id', currentEmployeeId)
+    }
 
     if (search) {
       // 名前・かな・会社名・メールを横断 OR 検索
