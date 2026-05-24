@@ -75,6 +75,8 @@ import { OverviewView } from "@/components/analytics/overview-view"
 import { ContactsView } from "@/components/analytics/contacts-view"
 import { ColdView } from "@/components/analytics/cold-view"
 import { IndustryClassifyCard } from "@/components/admin/industry-classify-card"
+import { EmailNetworkGraph } from "@/components/analytics/email-network-graph"
+import { NetworkGraphWrapper } from "@/components/analytics/network-graph-wrapper"
 import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
@@ -112,7 +114,8 @@ const GOOGLE_SERVICES = [
 // サイドバーナビゲーション
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
-  { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
+  { name: "マイ名刺帳", icon: Briefcase, href: "#", active: false, view: "cards_mine" },
+  { name: "会社の名刺帳", icon: Briefcase, href: "#", active: true, view: "cards" },
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "アシスタント", icon: Sparkles, href: "/assistant", active: false, view: "assistant_link" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
@@ -402,7 +405,8 @@ export default function BusinessCardApp() {
     if (!append) setIsLoading(true)
     setLoadError(null)
     try {
-      const response = await fetch(`/api/business-cards?limit=${pageSize}&offset=${pageNum * pageSize}`)
+      const scope = currentView === "cards_mine" ? "mine" : "company"
+      const response = await fetch(`/api/business-cards?limit=${pageSize}&offset=${pageNum * pageSize}&scope=${scope}`)
       const result = await response.json()
       
       if (!result.success) {
@@ -465,12 +469,12 @@ export default function BusinessCardApp() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [currentView, pageSize])
 
-  // 初回ロード
+  // 初回ロード + view 切替で再fetch
   useEffect(() => {
     fetchCards(0, false)
-  }, [fetchCards])
+  }, [fetchCards, currentView])
 
   // もっと読み込む
   const loadMore = useCallback(() => {
@@ -967,13 +971,14 @@ export default function BusinessCardApp() {
                 <Menu className="w-5 h-5" />
               </Button>
               <h2 className="text-lg md:text-xl font-semibold truncate">
-                {currentView === "cards" && "名刺一覧"}
+                {currentView === "cards" && "会社の名刺帳"}
+                {currentView === "cards_mine" && "マイ名刺帳"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
                 {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
               </h2>
-              {currentView === "cards" && (
+              {(currentView === "cards" || currentView === "cards_mine") && (
                 <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
                   {filteredCards.length} / {totalCount.toLocaleString()} 件
                 </Badge>
@@ -1423,9 +1428,10 @@ export default function BusinessCardApp() {
           {currentView === "analytics" && (
             <div className="flex-1 p-4 md:p-6 overflow-auto">
               <Tabs value={analyticsTab} onValueChange={setAnalyticsTab} className="w-full">
-                <TabsList className="grid w-full max-w-2xl grid-cols-4 h-auto">
+                <TabsList className="grid w-full max-w-3xl grid-cols-5 h-auto">
                   <TabsTrigger value="overview">概要</TabsTrigger>
                   <TabsTrigger value="network">人脈ネットワーク</TabsTrigger>
+                  <TabsTrigger value="email-network">メール送受信</TabsTrigger>
                   <TabsTrigger value="contacts">顧客連絡頻度</TabsTrigger>
                   <TabsTrigger value="cold">営業薄企業</TabsTrigger>
                 </TabsList>
@@ -1437,16 +1443,22 @@ export default function BusinessCardApp() {
 
                 {/* タブ2: 人脈ネットワーク（実DBデータをAPIから取得） */}
                 <TabsContent value="network" className="mt-6">
-                  <div className="h-[calc(100vh-220px)] min-h-[500px]">
-                    <NetworkGraph
-                      onNodeClick={(nodeId, nodeType) => {
-                        if (nodeType !== "business_card") return
-                        const cardId = nodeId.replace(/^card_/, "")
-                        const card = cards.find((c) => c.id === cardId)
-                        if (card) setSelectedCard(card)
-                      }}
-                    />
-                  </div>
+                  <NetworkGraphWrapper
+                    onNodeClick={(nodeId, nodeType) => {
+                      if (nodeType !== "business_card") return
+                      const cardId = nodeId.replace(/^card_/, "")
+                      const card = cards.find((c) => c.id === cardId)
+                      if (card) setSelectedCard(card)
+                    }}
+                  />
+                </TabsContent>
+
+                {/* タブ2.5: メール送受信ネットワーク */}
+                <TabsContent value="email-network" className="mt-6">
+                  <EmailNetworkGraph onCardClick={(id) => {
+                    const c = cards.find(x => x.id === id)
+                    if (c) setSelectedCard(c)
+                  }} />
                 </TabsContent>
 
                 {/* タブ3: 顧客連絡頻度 */}
