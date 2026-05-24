@@ -74,7 +74,6 @@ import { NetworkGraph } from "@/components/network-graph"
 import { OverviewView } from "@/components/analytics/overview-view"
 import { ContactsView } from "@/components/analytics/contacts-view"
 import { ColdView } from "@/components/analytics/cold-view"
-import { TagsManageView } from "@/components/tags/tags-manage-view"
 import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
@@ -113,7 +112,6 @@ const GOOGLE_SERVICES = [
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
   { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
-  { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
@@ -965,7 +963,6 @@ export default function BusinessCardApp() {
                 {currentView === "cards" && "名刺一覧"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
-                {currentView === "tags" && "タグ管理"}
                 {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
               </h2>
@@ -1415,12 +1412,6 @@ export default function BusinessCardApp() {
           )}
 
           {/* タグ管理ビュー */}
-          {currentView === "tags" && (
-            <div className="flex-1 p-4 md:p-6 overflow-auto">
-              <TagsManageView canEdit={currentUser?.role === "owner" || currentUser?.role === "admin"} />
-            </div>
-          )}
-
           {/* 分析ビュー（4タブ構成） */}
           {currentView === "analytics" && (
             <div className="flex-1 p-4 md:p-6 overflow-auto">
