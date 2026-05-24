@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Loader2, Inbox } from "lucide-react"
+import { GmailSyncButton } from "./gmail-sync-button"
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
@@ -70,9 +71,12 @@ export function ContactsView() {
             Gmail / Calendar 連携が未設定です
           </CardTitle>
           <CardDescription>
-            連絡頻度を集計するには、社員が Google 連携を許可してメール・カレンダーの読み取りを有効化する必要があります。連携後、夜間バッチで contact_activity が埋まり次第ここに表示されます。
+            連絡頻度を集計するには、設定 → Google Workspace 連携で Gmail の読み取りを許可した上で、下のボタンで初回同期してください。
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <GmailSyncButton onDone={() => location.reload()} />
+        </CardContent>
       </Card>
     )
   }

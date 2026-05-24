@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertTriangle } from "lucide-react"
+import { GmailSyncButton } from "./gmail-sync-button"
 
 interface ColdItem {
   id: string
@@ -69,9 +70,12 @@ export function ColdView({ onCardClick }: { onCardClick?: (id: string) => void }
             分析データがまだありません
           </CardTitle>
           <CardDescription>
-            Gmail / Calendar 連携が無効か、名刺の最終接触日が未設定です。連携後、過去に頻繁に連絡していたが最近やり取りが途絶えている企業がここに自動で出てきます。
+            Gmail / Calendar 連携が無効か、名刺の最終接触日が未設定です。下のボタンで Gmail を同期すると、過去 90 日のメールから自動で抽出されます。
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <GmailSyncButton onDone={() => location.reload()} />
+        </CardContent>
       </Card>
     )
   }
