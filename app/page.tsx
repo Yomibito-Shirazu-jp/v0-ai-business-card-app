@@ -2174,6 +2174,7 @@ export default function BusinessCardApp() {
                   <span className="text-muted-foreground"> 名刺の継続発注が利用条件です。発注が途絶えると分析機能を含むサービスが停止します。</span>
                 </div>
                 <SubscriptionCard />
+                <TrustSection />
                 <Tabs defaultValue="my-card" className="w-full">
                   <TabsList className="grid grid-cols-3 max-w-md">
                     <TabsTrigger value="my-card">自分の名刺</TabsTrigger>
