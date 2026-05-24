@@ -74,6 +74,7 @@ import { NetworkGraph } from "@/components/network-graph"
 import { OverviewView } from "@/components/analytics/overview-view"
 import { ContactsView } from "@/components/analytics/contacts-view"
 import { ColdView } from "@/components/analytics/cold-view"
+import { TagsManageView } from "@/components/tags/tags-manage-view"
 import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
@@ -1416,27 +1417,7 @@ export default function BusinessCardApp() {
           {/* タグ管理ビュー */}
           {currentView === "tags" && (
             <div className="flex-1 p-4 md:p-6 overflow-auto">
-              <Card>
-                <CardHeader>
-                  <CardTitle>タグ一覧</CardTitle>
-                  <CardDescription>名刺に付けられたタグの管理</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {allTags.map(tag => {
-                      const count = cards.filter(c => c.tags.includes(tag)).length
-                      return (
-                        <Badge key={tag} variant="secondary" className="text-sm px-3 py-1.5">
-                          {tag} <span className="ml-2 text-muted-foreground">({count})</span>
-                        </Badge>
-                      )
-                    })}
-                    {allTags.length === 0 && (
-                      <p className="text-muted-foreground">タグがありません</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <TagsManageView canEdit={currentUser?.role === "owner" || currentUser?.role === "admin"} />
             </div>
           )}
 
@@ -1968,7 +1949,7 @@ export default function BusinessCardApp() {
                       }}
                       disabled={isSavingProfile}
                     >
-                      {isSavingProfile ? '��存中...' : '保存'}
+                      {isSavingProfile ? '保存中...' : '保存'}
                     </Button>
                   </CardContent>
                 </Card>
