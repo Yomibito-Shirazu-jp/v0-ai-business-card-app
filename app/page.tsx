@@ -71,6 +71,9 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
 import { NetworkGraph } from "@/components/network-graph"
+import { OverviewView } from "@/components/analytics/overview-view"
+import { ContactsView } from "@/components/analytics/contacts-view"
+import { ColdView } from "@/components/analytics/cold-view"
 import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
@@ -1450,15 +1453,7 @@ export default function BusinessCardApp() {
 
                 {/* タブ1: 概要 */}
                 <TabsContent value="overview" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>概要</CardTitle>
-                      <CardDescription>各種KPIサマリ</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <OverviewView />
                 </TabsContent>
 
                 {/* タブ2: 人脈ネットワーク（実DBデータをAPIから取得） */}
@@ -1477,28 +1472,15 @@ export default function BusinessCardApp() {
 
                 {/* タブ3: 顧客連絡頻度 */}
                 <TabsContent value="contacts" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>顧客連絡頻度</CardTitle>
-                      <CardDescription>Gmail/Calendar連携による連絡履歴の頻度分析</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <ContactsView />
                 </TabsContent>
 
                 {/* タブ4: 営業薄企業 */}
                 <TabsContent value="cold" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>営業薄企業</CardTitle>
-                      <CardDescription>連絡が薄い企業の検出</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <ColdView onCardClick={(id) => {
+                    const card = cards.find((c) => c.id === id)
+                    if (card) setSelectedCard(card)
+                  }} />
                 </TabsContent>
               </Tabs>
             </div>
