@@ -113,6 +113,8 @@ const GOOGLE_SERVICES = [
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
   { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
+  { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
+  { name: "アシスタント", icon: Sparkles, href: "/assistant", active: false, view: "assistant_link" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
@@ -864,6 +866,10 @@ export default function BusinessCardApp() {
                     <li key={item.name}>
                       <button
                         onClick={() => {
+                          if (item.href && item.href !== "#") {
+                            window.location.href = item.href
+                            return
+                          }
                           setCurrentView(item.view)
                           setIsMobileNavOpen(false)
                         }}
