@@ -18,7 +18,7 @@ export async function callGeminiGenerateContent(opts: {
   body: any
   timeoutMs?: number
 }): Promise<any> {
-  const model = opts.model || 'gemini-2.0-flash'
+  const model = opts.model || 'gemini-flash-latest'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(opts.apiKey)}`
 
   let lastErrText = ''

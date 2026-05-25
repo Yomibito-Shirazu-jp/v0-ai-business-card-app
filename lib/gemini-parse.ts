@@ -52,7 +52,7 @@ export async function parseBusinessCardText(opts: {
   model?: string
 }): Promise<OCRResult> {
   const { apiKey, rawText } = opts
-  const model = opts.model || 'gemini-2.0-flash'
+  const model = opts.model || 'gemini-flash-latest'
 
   const data = await callGeminiGenerateContent({
     apiKey,
