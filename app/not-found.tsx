@@ -17,7 +17,7 @@ export default function NotFound() {
         </p>
         <div className="pt-2">
           <Button asChild>
-            <Link href="/">ホームへ戻る</Link>
+            <Link href="/app">アプリへ戻る</Link>
           </Button>
         </div>
       </div>

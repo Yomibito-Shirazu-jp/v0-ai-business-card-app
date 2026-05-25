@@ -35,7 +35,7 @@ export default function Error({
         )}
         <div className="flex items-center justify-center gap-2 pt-2">
           <Button onClick={reset}>再試行</Button>
-          <Button variant="outline" onClick={() => (window.location.href = "/")}>
+          <Button variant="outline" onClick={() => (window.location.href = "/app")}>
             ホームへ戻る
           </Button>
         </div>
