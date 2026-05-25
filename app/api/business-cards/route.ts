@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { OCRResult } from '@/lib/supabase/types'
+import { DEMO_BUSINESS_CARDS, isDemoMode } from '@/lib/demo-data'
 
 // 会社名刺帳モデル:
 //   - RLS が company_id を強制
@@ -12,6 +13,22 @@ import type { OCRResult } from '@/lib/supabase/types'
 //   - 新カラム name/name_kana にも書き込む
 
 export async function POST(request: NextRequest) {
+  // デモモードでは保存したふりをして返す
+  if (isDemoMode()) {
+    const body = await request.json()
+    const newCard = {
+      id: `demo-card-${Date.now()}`,
+      ...body.ocrResult,
+      ...body.manualEntry,
+      employee_id: 'demo-emp-001',
+      company_id: 'demo-company-001',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      tags: [],
+    }
+    return NextResponse.json({ success: true, data: newCard })
+  }
+
   try {
     const supabase = await createClient()
 
@@ -148,6 +165,22 @@ export async function POST(request: NextRequest) {
 
 // 名刺一覧取得(会社名刺帳)
 export async function GET(request: NextRequest) {
+  // デモモードではモックデータを返す
+  if (isDemoMode()) {
+    const { searchParams } = new URL(request.url)
+    const search = (searchParams.get('search') || '').toLowerCase()
+    let cards = [...DEMO_BUSINESS_CARDS]
+    if (search) {
+      cards = cards.filter(
+        (c) =>
+          c.full_name?.toLowerCase().includes(search) ||
+          c.company_name?.toLowerCase().includes(search) ||
+          c.email?.toLowerCase().includes(search),
+      )
+    }
+    return NextResponse.json({ success: true, data: cards, count: cards.length })
+  }
+
   try {
     const supabase = await createClient()
 
