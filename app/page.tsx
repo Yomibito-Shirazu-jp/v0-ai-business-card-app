@@ -67,6 +67,12 @@ export default async function LandingPage() {
             >
               料金
             </Link>
+            <Link
+              href="/shop"
+              className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground sm:inline-flex"
+            >
+              名刺を購入
+            </Link>
             <Button asChild size="sm" className="ml-1.5">
               <Link href={primaryHref}>{primaryLabel}</Link>
             </Button>
@@ -102,11 +108,11 @@ export default async function LandingPage() {
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </Button>
-              {!isAuthenticated && (
-                <Button asChild variant="outline" size="lg" className="h-12 w-full px-7 text-base sm:w-auto">
-                  <Link href="#features">機能を見る</Link>
-                </Button>
-              )}
+              <Button asChild variant="outline" size="lg" className="h-12 w-full px-7 text-base sm:w-auto">
+                <Link href="/shop" className="gap-2">
+                  名刺を購入する
+                </Link>
+              </Button>
             </div>
             <p className="mt-4 text-xs text-muted-foreground">
               Google ログイン / メール Magic Link 対応。クレジットカード不要。

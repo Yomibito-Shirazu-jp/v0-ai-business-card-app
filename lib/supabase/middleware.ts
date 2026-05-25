@@ -25,9 +25,8 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  // 認証なしで許可するパス(ブラウザ・API 両方)
-  // '/' はランディングページとして公開、'/app' 以下が認証必須のダッシュボード
-  const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth']
+  // '/' と '/shop' は公開（未認証でも閲覧/購入可能）
+  const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth', '/shop']
   const isPublicPath =
     pathname === '/' || publicPaths.some((p) => pathname.startsWith(p))
 
