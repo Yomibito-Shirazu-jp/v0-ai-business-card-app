@@ -47,10 +47,9 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  // '/' と '/shop' は公開（未認証でも閲覧/購入可能）
+  // '/shop' のみ公開、'/' は認証必須のダッシュボード
   const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth', '/shop']
-  const isPublicPath =
-    pathname === '/' || publicPaths.some((p) => pathname.startsWith(p))
+  const isPublicPath = publicPaths.some((p) => pathname.startsWith(p))
 
   if (!user && !isPublicPath) {
     // /api/* は 401 JSON を返す(リダイレクトしない)
@@ -67,10 +66,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // ログイン済みで /login に来た場合はアプリトップへ
+  // ログイン済みで /login に来た場合はトップへ
   if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
-    url.pathname = '/app'
+    url.pathname = '/'
     url.search = ''
     return NextResponse.redirect(url)
   }

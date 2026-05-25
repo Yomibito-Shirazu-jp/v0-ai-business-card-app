@@ -14,7 +14,7 @@ import { Briefcase, Mail, Loader2, CheckCircle2, AlertCircle } from "lucide-reac
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const nextUrl = searchParams.get("next") || "/app"
+  const nextUrl = searchParams.get("next") || "/"
   const initialError = searchParams.get("error")
 
   const [email, setEmail] = useState("")

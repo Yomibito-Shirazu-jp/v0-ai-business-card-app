@@ -1,113 +1,153 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateText, Output } from 'ai'
-import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
+import { processOcr } from '@/lib/document-ai'
+import { parseBusinessCardText } from '@/lib/gemini-parse'
+import { parseBusinessCardRawText } from '@/lib/parse-card'
 import type { OCRResult } from '@/lib/supabase/types'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
 // 名刺 OCR API
-// AI SDK 6 + Vercel AI Gateway を利用。
-// 認証情報がない場合は 503 + setup_required で UI 側にセットアップ手順を表示させる。
+// 1. Document AI (Document OCR processor) で raw_text 取得
+// 2. Gemini API (AI Studio) で構造化 (主) — company_secrets.gemini_api_key
+// 3. Gemini が失敗 / API キー無し → ルールベース parser で構造化 (fallback)
 export async function POST(request: NextRequest) {
-  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
-    return NextResponse.json(
-      {
-        error:
-          'OCR エンジンが未設定です。Vercel の Settings → Environment Variables で AI_GATEWAY_API_KEY を設定してください。',
-        setup_required: true,
-      },
-      { status: 503 },
-    )
-  }
-
   try {
-    const { image } = await request.json()
+    const supabase = await createClient()
 
-    if (!image || typeof image !== 'string') {
-      return NextResponse.json({ error: '画像データが必要です' }, { status: 400 })
-    }
-
-    // data URL でも生 base64 でも受け取れるよう正規化
-    const dataUrl = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`
-
-    // OpenAI strict モード対応のため optional() ではなく nullable() を使う
-    const schema = z.object({
-      full_name: z.string().nullable(),
-      full_name_kana: z.string().nullable(),
-      company_name: z.string().nullable(),
-      company_name_kana: z.string().nullable(),
-      department: z.string().nullable(),
-      position: z.string().nullable(),
-      email: z.string().nullable(),
-      phone: z.string().nullable(),
-      mobile: z.string().nullable(),
-      fax: z.string().nullable(),
-      postal_code: z.string().nullable(),
-      address: z.string().nullable(),
-      website: z.string().nullable(),
-      linkedin: z.string().nullable(),
-      twitter: z.string().nullable(),
-      facebook: z.string().nullable(),
-      raw_text: z.string(),
-      confidence: z.number().min(0).max(1),
-    })
-
-    const { experimental_output } = await generateText({
-      model: 'openai/gpt-4o-mini',
-      experimental_output: Output.object({ schema }),
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', image: dataUrl },
-            {
-              type: 'text',
-              text: [
-                'この日本語の名刺画像から情報を抽出してください。',
-                '- ふりがな(かな/カナ)が記載されていれば抽出すること',
-                '- 該当項目が無いものは null を返すこと',
-                '- 全文を raw_text に格納し、抽出の信頼度を 0〜1 の confidence で返すこと',
-              ].join('\n'),
-            },
-          ],
-        },
-      ],
-    })
-
-    if (!experimental_output) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
       return NextResponse.json(
-        { error: 'OCR エンジンから構造化レスポンスを取得できませんでした' },
-        { status: 502 },
+        { success: false, error: '認証が必要です', code: 'UNAUTHENTICATED' },
+        { status: 401 },
       )
     }
 
-    // zod の null を OCRResult (string | undefined) に正規化
-    const raw = experimental_output as z.infer<typeof schema>
-    const ocr: OCRResult = {
-      full_name: raw.full_name ?? undefined,
-      full_name_kana: raw.full_name_kana ?? undefined,
-      company_name: raw.company_name ?? undefined,
-      company_name_kana: raw.company_name_kana ?? undefined,
-      department: raw.department ?? undefined,
-      position: raw.position ?? undefined,
-      email: raw.email ?? undefined,
-      phone: raw.phone ?? undefined,
-      mobile: raw.mobile ?? undefined,
-      fax: raw.fax ?? undefined,
-      postal_code: raw.postal_code ?? undefined,
-      address: raw.address ?? undefined,
-      website: raw.website ?? undefined,
-      linkedin: raw.linkedin ?? undefined,
-      twitter: raw.twitter ?? undefined,
-      facebook: raw.facebook ?? undefined,
-      raw_text: raw.raw_text ?? '',
-      confidence: typeof raw.confidence === 'number' ? raw.confidence : 0,
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('id, company_id, status')
+      .eq('auth_user_id', user.id)
+      .eq('status', 'active')
+      .single()
+
+    if (!employee) {
+      return NextResponse.json(
+        { success: false, error: '社員登録がありません' },
+        { status: 403 },
+      )
     }
-    return NextResponse.json(ocr)
+
+    const { data: secrets, error: secretsError } = await supabase
+      .from('company_secrets')
+      .select('gcp_project_id, gcp_location, gcp_processor_id, gcp_service_account_json, gemini_api_key')
+      .eq('company_id', employee.company_id)
+      .single()
+
+    if (
+      secretsError ||
+      !secrets ||
+      !secrets.gcp_project_id ||
+      !secrets.gcp_processor_id ||
+      !secrets.gcp_service_account_json
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'OCR エンジンが未設定です。管理画面 → 設定 → Google Document AI から登録してください。',
+          code: 'DOCAI_NOT_CONFIGURED',
+        },
+        { status: 503 },
+      )
+    }
+
+    const body = await request.json()
+    const image: string | undefined = body.image
+    if (!image || typeof image !== 'string') {
+      return NextResponse.json(
+        { success: false, error: '画像データが必要です' },
+        { status: 400 },
+      )
+    }
+
+    let mimeType = 'image/jpeg'
+    let imageBase64 = image
+    const m = image.match(/^data:([^;]+);base64,(.+)$/)
+    if (m) {
+      mimeType = m[1]
+      imageBase64 = m[2]
+    }
+
+    // 1. Document OCR
+    const ocr = await processOcr({
+      serviceAccountJson: secrets.gcp_service_account_json,
+      projectId: secrets.gcp_project_id,
+      location: secrets.gcp_location || 'us',
+      processorId: secrets.gcp_processor_id,
+      mimeType,
+      imageBase64,
+    })
+
+    if (!ocr.rawText || ocr.rawText.trim().length === 0) {
+      const empty: OCRResult = {
+        full_name: undefined,
+        full_name_kana: undefined,
+        company_name: undefined,
+        company_name_kana: undefined,
+        department: undefined,
+        position: undefined,
+        email: undefined,
+        phone: undefined,
+        mobile: undefined,
+        fax: undefined,
+        postal_code: undefined,
+        address: undefined,
+        website: undefined,
+        linkedin: undefined,
+        twitter: undefined,
+        facebook: undefined,
+        raw_text: '',
+        confidence: 0,
+      }
+      return NextResponse.json(empty)
+    }
+
+    // 2. Gemini API (主) → 失敗 / 未設定なら parser (fallback)
+    let result: OCRResult
+    let parser: 'gemini' | 'rule' = 'rule'
+    let geminiError: string | undefined
+
+    if (secrets.gemini_api_key) {
+      try {
+        result = await parseBusinessCardText({
+          apiKey: secrets.gemini_api_key,
+          rawText: ocr.rawText,
+        })
+        parser = 'gemini'
+      } catch (e) {
+        geminiError = e instanceof Error ? e.message : String(e)
+        console.warn('[ocr] Gemini failed, fallback to rule:', geminiError)
+        result = parseBusinessCardRawText(ocr.rawText)
+        parser = 'rule'
+      }
+    } else {
+      result = parseBusinessCardRawText(ocr.rawText)
+      parser = 'rule'
+    }
+
+    // geminiError は内部詳細を含み得るため、UI には簡略化したメッセージだけ返す
+    if (geminiError) console.warn('[ocr] gemini fallback reason:', geminiError)
+    return NextResponse.json({
+      ...result,
+      _meta: { parser, gemini_failed: !!geminiError },
+    })
   } catch (error) {
     console.error('[ocr] error:', error)
-    const message = error instanceof Error ? error.message : 'OCR処理に失敗しました'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'OCR 処理に失敗しました'
+    return NextResponse.json(
+      { success: false, error: message, code: 'OCR_FAILED' },
+      { status: 500 },
+    )
   }
 }

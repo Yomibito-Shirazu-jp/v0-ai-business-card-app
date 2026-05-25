@@ -51,13 +51,13 @@ export default function CardsListPage() {
       <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
           <Button asChild size="icon" variant="ghost" className="md:hidden">
-            <Link href="/app" aria-label="ダッシュボードに戻る">
+            <Link href="/" aria-label="ダッシュボードに戻る">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
           <h1 className="flex-1 truncate text-base font-semibold sm:text-lg">名刺一覧</h1>
           <Button asChild size="sm" className="gap-1.5">
-            <Link href="/app?view=scan">
+            <Link href="/?view=scan">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">追加</span>
             </Link>
