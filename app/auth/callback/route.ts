@@ -21,7 +21,23 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  // セッションから Google OAuth トークンを抜き出す (このコールバック内でだけ取れる)
+  const { data: { session } } = await supabase.auth.getSession()
   const { data: { user } } = await supabase.auth.getUser()
+
+  // tokeninfo で実際のスコープを取得 (provider_token がある時のみ)
+  let grantedScopes: string[] = []
+  let tokenExpiresAt: string | null = null
+  if (session?.provider_token) {
+    try {
+      const ti = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${session.provider_token}`, { cache: 'no-store' })
+      if (ti.ok) {
+        const tinfo = await ti.json() as { scope?: string; exp?: number }
+        grantedScopes = (tinfo.scope || '').split(' ').filter(Boolean)
+        if (tinfo.exp) tokenExpiresAt = new Date(tinfo.exp * 1000).toISOString()
+      }
+    } catch { /* ignore */ }
+  }
 
   if (user?.email) {
     const emailLower = user.email.toLowerCase()
@@ -39,6 +55,13 @@ export async function GET(request: NextRequest) {
       if (matched.status !== 'active') {
         updates.status = 'active'
         updates.activated_at = new Date().toISOString()
+      }
+      // Google OAuth トークンが取れていれば永続化 (ページリロード後も /api/google/scopes が動くように)
+      if (session?.provider_token) {
+        updates.google_access_token = session.provider_token
+        if (session.provider_refresh_token) updates.google_refresh_token = session.provider_refresh_token
+        if (tokenExpiresAt) updates.google_token_expires_at = tokenExpiresAt
+        if (grantedScopes.length > 0) updates.google_granted_scopes = grantedScopes
       }
       if (Object.keys(updates).length > 0) {
         await supabase.from('employees').update(updates).eq('id', matched.id)
