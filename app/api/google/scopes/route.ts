@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { isDemoMode } from "@/lib/demo-data"
 
 const SCOPE_BY_SERVICE = {
   contacts: 'https://www.googleapis.com/auth/contacts.readonly',
@@ -12,6 +13,18 @@ export type GoogleService = keyof typeof SCOPE_BY_SERVICE
 
 // GET: 現在のGoogle OAuth scope一覧を取得
 export async function GET() {
+  // デモモードではGoogle連携なしとして返す
+  if (isDemoMode()) {
+    return NextResponse.json({
+      hasGoogleAuth: false,
+      contacts: false,
+      calendar: false,
+      gmail: false,
+      drive: false,
+      email: 'demo@example.com',
+    })
+  }
+
   const supabase = await createClient()
   
   const { data: { session }, error: authError } = await supabase.auth.getSession()
