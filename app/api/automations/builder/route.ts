@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { callGeminiGenerateContent } from '@/lib/gemini-fetch'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -69,43 +70,40 @@ config の例:
     parts: [{ text: m.text }],
   }))
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(secrets.gemini_api_key)}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents,
-      generationConfig: {
-        temperature: 0.3,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: {
-            reply: { type: 'string' },
-            draft: {
-              type: 'object',
-              nullable: true,
-              properties: {
-                name: { type: 'string' },
-                description: { type: 'string' },
-                trigger_type: { type: 'string' },
-                action_type: { type: 'string' },
-                config: { type: 'object' },
+  let data: any
+  try {
+    data = await callGeminiGenerateContent({
+      apiKey: secrets.gemini_api_key,
+      body: {
+        systemInstruction: { parts: [{ text: system }] },
+        contents,
+        generationConfig: {
+          temperature: 0.3,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              reply: { type: 'string' },
+              draft: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  name: { type: 'string' },
+                  description: { type: 'string' },
+                  trigger_type: { type: 'string' },
+                  action_type: { type: 'string' },
+                  config: { type: 'object' },
+                },
               },
             },
           },
         },
       },
-    }),
-  })
-
-  if (!res.ok) {
-    const t = await res.text()
-    console.error('[automations/builder] gemini err', res.status, t)
-    return NextResponse.json({ error: `Gemini error ${res.status}` }, { status: 502 })
+    })
+  } catch (e: any) {
+    const status = e?.code === 'RATE_LIMITED' ? 429 : 502
+    return NextResponse.json({ error: e?.message || 'AI 応答失敗', code: e?.code }, { status })
   }
-  const data = await res.json() as any
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
   let out: any = { reply: '応答に失敗しました', draft: null }
   try { out = JSON.parse(text) } catch { /* keep default */ }
