@@ -135,6 +135,17 @@ export default function LoginPage() {
             </div>
           )}
 
+          <div className="border-t border-border pt-3 mt-2">
+            <a
+              href="https://demo.b-p.co.jp/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full text-center text-sm text-amber-600 hover:underline py-1"
+            >
+              👀 デモを試す (ログイン不要)
+            </a>
+          </div>
+
           {message && (
             <div
               role="status"

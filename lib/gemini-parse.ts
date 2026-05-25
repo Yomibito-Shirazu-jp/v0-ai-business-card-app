@@ -3,6 +3,7 @@
 // 認証は API キー (https://aistudio.google.com/app/apikey で発行) を使う。
 // Vertex AI / OAuth は使わない。
 import type { OCRResult } from './supabase/types'
+import { callGeminiGenerateContent } from './gemini-fetch'
 
 const PROMPT = `あなたは日本語ビジネス名刺のパーサーです。
 以下の OCR テキストを読み、各フィールドを抽出して指定された JSON 形式で返してください。
@@ -51,37 +52,26 @@ export async function parseBusinessCardText(opts: {
   model?: string
 }): Promise<OCRResult> {
   const { apiKey, rawText } = opts
-  const model = opts.model || 'gemini-2.0-flash'
+  const model = opts.model || 'gemini-flash-latest'
 
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
-    `?key=${encodeURIComponent(apiKey)}`
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const data = await callGeminiGenerateContent({
+    apiKey,
+    model,
+    body: {
       contents: [
-        { role: 'user', parts: [{ text: `${PROMPT}\n\n--- 名刺の OCR テキスト ---\n${rawText}` }] },
+        { role: 'user', parts: [{ text: `${PROMPT}
+
+--- 名刺の OCR テキスト ---
+${rawText}` }] },
       ],
       generationConfig: {
         temperature: 0,
         responseMimeType: 'application/json',
         responseSchema: RESPONSE_SCHEMA,
       },
-    }),
-  })
+    },
+  }) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
 
-  if (!res.ok) {
-    const body = await res.text()
-    const err: any = new Error(`Gemini API 失敗 (${res.status}): ${body.slice(0, 500)}`)
-    err.status = res.status
-    throw err
-  }
-
-  const data = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-  }
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
 
   let parsed: Record<string, unknown>

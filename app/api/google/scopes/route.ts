@@ -9,8 +9,20 @@ const SCOPE_BY_SERVICE = {
   drive: 'https://www.googleapis.com/auth/drive.metadata.readonly',
 } as const
 
-// セッションの provider_token を最優先、無ければ employees.google_access_token を使う。
-// expire していれば refresh_token で更新を試みる。
+const EMPTY_SCOPES = {
+  hasGoogleAuth: false,
+  contacts: false,
+  calendar: false,
+  gmail: false,
+  drive: false,
+  email: null as string | null,
+}
+
+// GET: Google OAuth スコープ取得
+// 優先順:
+//   1. session.provider_token (OAuth コールバック直後にしか取れない)
+//   2. employees.google_access_token (DB に永続化済み)
+//   3. refresh_token があり client credentials 設定済みなら refresh で更新
 export async function GET() {
   if (isDemoMode()) {
     return NextResponse.json(DEMO_GOOGLE_SCOPES)
@@ -21,9 +33,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    return NextResponse.json({
-      hasGoogleAuth: false, contacts: false, calendar: false, gmail: false, drive: false, email: null,
-    })
+    return NextResponse.json(EMPTY_SCOPES)
   }
 
   // employees から保存済みトークン
@@ -36,61 +46,62 @@ export async function GET() {
   let accessToken: string | null = session?.provider_token || emp?.google_access_token || null
   let expired = false
 
-  // セッショントークン優先。無くて DB トークンしか無い時は期限を確認
+  // DB トークンしか無いときは期限を確認 → 必要なら refresh
   if (!session?.provider_token && emp?.google_access_token && emp?.google_token_expires_at) {
     const exp = new Date(emp.google_token_expires_at).getTime()
     if (exp < Date.now() + 60_000) {
-      // 期限切れ間近 → refresh
-      if (emp.google_refresh_token) {
+      // 期限切れ間近 → refresh を試行
+      const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID
+      const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
+      if (emp.google_refresh_token && clientId && clientSecret) {
         try {
-          const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID
-          const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
-          if (clientId && clientSecret) {
-            const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({
-                client_id: clientId,
-                client_secret: clientSecret,
-                refresh_token: emp.google_refresh_token,
-                grant_type: 'refresh_token',
-              }).toString(),
-            })
-            if (refreshRes.ok) {
-              const rdata = await refreshRes.json() as { access_token: string; expires_in: number; scope: string }
-              accessToken = rdata.access_token
-              const newExp = new Date(Date.now() + (rdata.expires_in || 3600) * 1000).toISOString()
-              await supabase.from('employees').update({
-                google_access_token: rdata.access_token,
-                google_token_expires_at: newExp,
-                google_granted_scopes: (rdata.scope || '').split(' ').filter(Boolean),
-              }).eq('id', emp.id)
-              expired = false
-            } else {
-              expired = true
-              accessToken = null
-            }
+          const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: clientId,
+              client_secret: clientSecret,
+              refresh_token: emp.google_refresh_token,
+              grant_type: 'refresh_token',
+            }).toString(),
+          })
+          if (refreshRes.ok) {
+            const rdata = await refreshRes.json() as { access_token: string; expires_in?: number; scope?: string }
+            accessToken = rdata.access_token
+            const newExp = new Date(Date.now() + (rdata.expires_in || 3600) * 1000).toISOString()
+            const newScopes = (rdata.scope || '').split(' ').filter(Boolean)
+            await supabase.from('employees').update({
+              google_access_token: rdata.access_token,
+              google_token_expires_at: newExp,
+              ...(newScopes.length > 0 ? { google_granted_scopes: newScopes } : {}),
+            }).eq('id', emp.id)
           } else {
-            // クライアントクレデンシャル未設定 → refresh できないが、保存スコープから推定
+            // refresh 失敗 (revoked など)
             expired = true
+            accessToken = null
           }
         } catch {
           expired = true
         }
       } else {
+        // refresh トークンか client credentials が無い → 期限切れ扱い
         expired = true
       }
     }
   }
 
-  // accessToken が無いなら未接続
+  // accessToken が無いなら未接続 (ただし grantedScopes が DB にあれば「以前許可済み」として返す)
   if (!accessToken) {
+    const dbScopes = emp?.google_granted_scopes || []
     return NextResponse.json({
-      hasGoogleAuth: !!(emp?.google_granted_scopes && emp.google_granted_scopes.length > 0),
+      hasGoogleAuth: false,
       tokenExpired: expired,
-      contacts: false, calendar: false, gmail: false, drive: false,
+      contacts: dbScopes.includes(SCOPE_BY_SERVICE.contacts),
+      calendar: dbScopes.includes(SCOPE_BY_SERVICE.calendar),
+      gmail: dbScopes.includes(SCOPE_BY_SERVICE.gmail),
+      drive: dbScopes.includes(SCOPE_BY_SERVICE.drive),
       email: user.email,
-      grantedScopes: emp?.google_granted_scopes || [],
+      grantedScopes: dbScopes,
     })
   }
 
@@ -106,16 +117,17 @@ export async function GET() {
       if (tinfo.email) tokenEmail = tinfo.email
       if (tinfo.exp) expIso = new Date(tinfo.exp * 1000).toISOString()
 
-      // セッショントークンが新しければ DB を更新しておく
+      // セッショントークンが新しければ DB を更新
       if (session?.provider_token && emp) {
         await supabase.from('employees').update({
           google_access_token: accessToken,
           google_token_expires_at: expIso,
           google_granted_scopes: grantedScopes,
-          google_refresh_token: session.provider_refresh_token || emp.google_refresh_token,
+          ...(session.provider_refresh_token ? { google_refresh_token: session.provider_refresh_token } : {}),
         }).eq('id', emp.id)
       }
     } else {
+      // tokeninfo 失敗 → access_token が revoke されている
       expired = true
     }
   } catch {
@@ -123,7 +135,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    hasGoogleAuth: !expired && accessToken !== null,
+    hasGoogleAuth: !expired,
     tokenExpired: expired,
     contacts: grantedScopes.includes(SCOPE_BY_SERVICE.contacts),
     calendar: grantedScopes.includes(SCOPE_BY_SERVICE.calendar),
