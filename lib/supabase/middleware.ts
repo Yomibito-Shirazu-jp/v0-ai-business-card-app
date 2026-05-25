@@ -7,12 +7,18 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  // Supabase の環境変数が無い場合は middleware を素通りさせる(本番未設定での 500 を防止)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  let supabase
+  try {
+    supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
@@ -23,10 +29,21 @@ export async function updateSession(request: NextRequest) {
           )
         },
       },
-    },
-  )
+    })
+  } catch (e) {
+    console.error('[v0] middleware: createServerClient failed', e)
+    return NextResponse.next({ request })
+  }
 
-  const { data: { user } } = await supabase.auth.getUser()
+  let user: { id: string } | null = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch (e) {
+    console.error('[v0] middleware: getUser failed', e)
+    // セッション取得失敗時は素通りさせて UI 側でハンドルさせる
+    return NextResponse.next({ request })
+  }
 
   const pathname = request.nextUrl.pathname
 
