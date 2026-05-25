@@ -1,8 +1,14 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { DEMO_LOGIN_EVENTS, isDemoMode } from "@/lib/demo-data"
 
 // GET: 自分のログイン履歴取得
 export async function GET() {
+  // デモモードではモックデータを返す
+  if (isDemoMode()) {
+    return NextResponse.json({ events: DEMO_LOGIN_EVENTS })
+  }
+
   const supabase = await createClient()
   
   const { data: { user }, error: authError } = await supabase.auth.getUser()

@@ -2,12 +2,23 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
+  // デモモードでは認証チェックをスキップ
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
+    return NextResponse.next({ request })
+  }
+
+  // Supabase の環境変数が無い場合は middleware を素通りさせる(本番未設定での 500 を防止)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  let supabase
+  try {
+    supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
@@ -18,15 +29,26 @@ export async function updateSession(request: NextRequest) {
           )
         },
       },
-    },
-  )
+    })
+  } catch (e) {
+    console.error('[v0] middleware: createServerClient failed', e)
+    return NextResponse.next({ request })
+  }
 
-  const { data: { user } } = await supabase.auth.getUser()
+  let user: { id: string } | null = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch (e) {
+    console.error('[v0] middleware: getUser failed', e)
+    // セッション取得失敗時は素通りさせて UI 側でハンドルさせる
+    return NextResponse.next({ request })
+  }
 
   const pathname = request.nextUrl.pathname
 
-  // 認証なしで許可するパス(ブラウザ・API 両方)
-  const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth']
+  // '/shop' のみ公開、'/' は認証必須のダッシュボード
+  const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth', '/shop']
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p))
 
   if (!user && !isPublicPath) {
@@ -44,7 +66,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // ログイン済みで /login に来た場合はトップへ(API 以外)
+  // ログイン済みで /login に来た場合はトップへ
   if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
     url.pathname = '/'

@@ -1,8 +1,18 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { DEMO_EMPLOYEES, DEMO_USER, isDemoMode } from '@/lib/demo-data'
 
 // 社員一覧取得 (同company内のみ)
 export async function GET() {
+  // デモモードではモックデータを返す
+  if (isDemoMode()) {
+    return NextResponse.json({
+      success: true,
+      data: DEMO_EMPLOYEES,
+      currentEmployee: { id: 'demo-emp-001', role: 'owner' },
+    })
+  }
+
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -60,6 +70,19 @@ export async function GET() {
 
 // 社員招待 (owner/adminのみ)
 export async function POST(request: Request) {
+  // デモモードでは追加したふりをして返す
+  if (isDemoMode()) {
+    const body = await request.json()
+    const newEmp = {
+      id: `demo-emp-${Date.now()}`,
+      ...body,
+      company_id: 'demo-company-001',
+      status: 'invited',
+      created_at: new Date().toISOString(),
+    }
+    return NextResponse.json({ success: true, data: newEmp })
+  }
+
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
