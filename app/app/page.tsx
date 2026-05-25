@@ -148,7 +148,7 @@ export default function BusinessCardApp() {
   const [scanProgress, setScanProgress] = useState(0)
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
-  const [currentView, setCurrentView] = useState<string>("cards")
+  const [currentView, setCurrentView] = useState<string>("dashboard")
   // モバイル: サイドバーを Drawer (Sheet) で開閉
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   // ビューポートが md (>=768px) 未満かどうか。Sheet の overlay が desktop で誤って出る問題への対処。
@@ -183,7 +183,7 @@ export default function BusinessCardApp() {
   const pageSize = 50
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // ユーザー情報取得（拡張版）
+  // ユー���ー情報取得（拡張版）
   const [currentUser, setCurrentUser] = useState<{
     id: string | null
     name: string
@@ -903,7 +903,7 @@ export default function BusinessCardApp() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインしてください"}</p>
+                        <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.name || "ログインして���ださい"}</p>
                       </div>
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
                     </button>
