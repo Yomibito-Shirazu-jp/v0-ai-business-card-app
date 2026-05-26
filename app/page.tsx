@@ -1,8 +1,9 @@
 "use client"
 
-import Link from "next/link"
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
+import Link from "next/link"
 import {
+  Receipt,
   Search,
   Plus,
   Upload,
@@ -71,6 +72,12 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
 import { NetworkGraph } from "@/components/network-graph"
+import { OverviewView } from "@/components/analytics/overview-view"
+import { ContactsView } from "@/components/analytics/contacts-view"
+import { ColdView } from "@/components/analytics/cold-view"
+import { IndustryClassifyCard } from "@/components/admin/industry-classify-card"
+import { EmailNetworkGraph } from "@/components/analytics/email-network-graph"
+import { NetworkGraphWrapper } from "@/components/analytics/network-graph-wrapper"
 import { CompanyInfoSection, CompanyNewsSection } from "@/components/company-enrichment"
 
 // 型定義
@@ -108,9 +115,11 @@ const GOOGLE_SERVICES = [
 // サイドバーナビゲーション
 const sidebarNav = [
   { name: "ダッシュボード", icon: Home, href: "#", active: false, view: "dashboard" },
-  { name: "名刺一覧", icon: Briefcase, href: "#", active: true, view: "cards" },
-  { name: "スキャン", icon: ScanLine, href: "#", active: false, view: "scan" },
-  { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
+  { name: "マイ名刺帳", icon: Briefcase, href: "#", active: false, view: "cards_mine" },
+  { name: "会社の名刺帳", icon: Briefcase, href: "#", active: true, view: "cards" },
+  { name: "アシスタント", icon: Sparkles, href: "/assistant", active: false, view: "assistant_link" },
+  { name: "AI 自動化", icon: Sparkles, href: "/automation", active: false, view: "automation_link" },
+  { name: "発注・決済履歴", icon: Receipt, href: "/orders", active: false, view: "orders_link" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
@@ -127,13 +136,32 @@ export default function BusinessCardApp() {
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [isScanDialogOpen, setIsScanDialogOpen] = useState(false)
+  // スキャン後の確認モーダル用: OCR 完了直後、保存前にユーザーに見せる候補
+  const [pendingScan, setPendingScan] = useState<{
+    ocrResult: any
+    imageBase64: string
+    parser?: string
+    geminiError?: string
+  } | null>(null)
+  const [pendingEdit, setPendingEdit] = useState<Record<string, string>>({})
+  const [savingPending, setSavingPending] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
   const [scanStatus, setScanStatus] = useState<string>("")
   const [scanError, setScanError] = useState<string | null>(null)
-  const [currentView, setCurrentView] = useState<string>("dashboard")
+  const [currentView, setCurrentView] = useState<string>("cards")
   // モバイル: サイドバーを Drawer (Sheet) で開閉
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  // ビューポートが md (>=768px) 未満かどうか。Sheet の overlay が desktop で誤って出る問題への対処。
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mql = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(mql.matches)
+    update()
+    mql.addEventListener('change', update)
+    return () => mql.removeEventListener('change', update)
+  }, [])
   const [analyticsTab, setAnalyticsTab] = useState<string>("overview")
 
   // URL クエリで初期ビュー/タブを反映（/network → analytics?tab=network のリダイレクト先など）
@@ -142,11 +170,6 @@ export default function BusinessCardApp() {
     const params = new URLSearchParams(window.location.search)
     const view = params.get("view")
     const tab = params.get("tab")
-    // 名刺一覧は専用ページに集約済み。/?view=cards で来たら /cards に即リダイレクト
-    if (view === "cards") {
-      window.location.replace("/cards")
-      return
-    }
     if (view) setCurrentView(view)
     if (tab) setAnalyticsTab(tab)
   }, [])
@@ -379,12 +402,13 @@ export default function BusinessCardApp() {
 
   // ネットワークデータは NetworkGraph 内で /api/analytics/network から取得
 
-  // Supabaseから名刺データを取得（ページネ��ション対������）
+  // Supabaseから名刺データを取得（ページネーション対������）
   const fetchCards = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!append) setIsLoading(true)
     setLoadError(null)
     try {
-      const response = await fetch(`/api/business-cards?limit=${pageSize}&offset=${pageNum * pageSize}`)
+      const scope = currentView === "cards_mine" ? "mine" : "company"
+      const response = await fetch(`/api/business-cards?limit=${pageSize}&offset=${pageNum * pageSize}&scope=${scope}`)
       const result = await response.json()
       
       if (!result.success) {
@@ -447,12 +471,12 @@ export default function BusinessCardApp() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [currentView, pageSize])
 
-  // 初回ロード
+  // 初回ロード + view 切替で再fetch
   useEffect(() => {
     fetchCards(0, false)
-  }, [fetchCards])
+  }, [fetchCards, currentView])
 
   // もっと読み込む
   const loadMore = useCallback(() => {
@@ -471,7 +495,71 @@ export default function BusinessCardApp() {
     })
   }
 
-  // OCR実行 → DB保存
+  // OCR を実行して結果を返すだけ。保存はしない（confirm modal で確認後に saveOcrResult が呼ぶ）
+  const runOcrOnly = useCallback(async (imageBase64: string) => {
+    setIsScanning(true)
+    setScanProgress(10)
+    setScanStatus("OCR解析中...")
+    setScanError(null)
+    try {
+      setScanProgress(40)
+      const ocrResponse = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 }),
+      })
+      const ocrResult = await ocrResponse.json()
+      if (!ocrResponse.ok) {
+        const msg = ocrResult?.error || 'OCR処理に失敗しました'
+        throw new Error(msg)
+      }
+      setScanProgress(100)
+      setIsScanning(false)
+      setScanStatus("")
+      return ocrResult
+    } catch (e) {
+      setIsScanning(false)
+      setScanStatus("")
+      setScanProgress(0)
+      throw e
+    }
+  }, [])
+
+  // 単一画像/カメラスキャン: OCR 完了後、確認モーダルを表示してユーザーに保存可否を判断させる
+  const processSingleScanWithConfirm = useCallback(async (imageBase64: string) => {
+    try {
+      const ocrResult = await runOcrOnly(imageBase64)
+      const { _meta, ...rest } = ocrResult || {}
+      setPendingScan({
+        ocrResult: rest,
+        imageBase64,
+        parser: _meta?.parser,
+        geminiError: _meta?.geminiError,
+      })
+      // 編集フォームを初期値で埋める
+      setPendingEdit({
+        full_name: rest.full_name || '',
+        full_name_kana: rest.full_name_kana || '',
+        company_name: rest.company_name || '',
+        company_name_kana: rest.company_name_kana || '',
+        department: rest.department || '',
+        position: rest.position || '',
+        email: rest.email || '',
+        phone: rest.phone || '',
+        mobile: rest.mobile || '',
+        fax: rest.fax || '',
+        postal_code: rest.postal_code || '',
+        address: rest.address || '',
+        website: rest.website || '',
+      })
+      setIsScanDialogOpen(false)
+    } catch (error) {
+      console.error('OCR エラー:', error)
+      setScanError(error instanceof Error ? error.message : 'OCR に失敗しました')
+    }
+  }, [runOcrOnly])
+
+  // PDF 用の一括処理（旧 processBusinessCard 相当）— 各ページを OCR → 即保存
   const processBusinessCard = useCallback(async (imageBase64: string) => {
     setIsScanning(true)
     setScanProgress(10)
@@ -479,7 +567,6 @@ export default function BusinessCardApp() {
     setScanError(null)
 
     try {
-      // OCR API呼び出し
       setScanProgress(30)
       const ocrResponse = await fetch('/api/ocr', {
         method: 'POST',
@@ -491,9 +578,6 @@ export default function BusinessCardApp() {
 
       if (!ocrResponse.ok) {
         const msg = ocrResult?.error || 'OCR処理に失敗しました'
-        if (ocrResult?.setup_required) {
-          throw new Error(`${msg} (Vercel の Settings → Environment Variables で AI_GATEWAY_API_KEY を設定してください)`)
-        }
         throw new Error(msg)
       }
       setScanProgress(60)
@@ -626,13 +710,13 @@ export default function BusinessCardApp() {
       }
 
       const base64 = await imageToBase64(file)
-      await processBusinessCard(base64)
+      await processSingleScanWithConfirm(base64)
     } catch (error) {
       console.error('ファイル読み込みエラー:', error)
       setScanError(error instanceof Error ? error.message : 'ファイルの読み込みに失敗しました')
       setIsScanning(false)
     }
-  }, [processBusinessCard])
+  }, [processBusinessCard, processSingleScanWithConfirm])
 
   // カメラ起動
   const handleCameraCapture = useCallback(() => {
@@ -784,26 +868,14 @@ export default function BusinessCardApp() {
               {/* ナビゲーション */}
               <nav className="flex-1 p-3 overflow-y-auto">
                 <ul className="space-y-1">
-                  {sidebarNav.map((item) => {
-                    // 名刺一覧は専用ページ /cards に遷移（一覧+詳細を分離した新UI）
-                    if (item.view === "cards") {
-                      return (
-                        <li key={item.name}>
-                          <Link
-                            href="/cards"
-                            onClick={() => setIsMobileNavOpen(false)}
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left min-h-11 text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                          >
-                            <item.icon className="w-4 h-4" />
-                            <span>{item.name}</span>
-                          </Link>
-                        </li>
-                      )
-                    }
-                    return (
+                  {sidebarNav.map((item) => (
                     <li key={item.name}>
                       <button
                         onClick={() => {
+                          if (item.href && item.href !== "#") {
+                            window.location.href = item.href
+                            return
+                          }
                           setCurrentView(item.view)
                           setIsMobileNavOpen(false)
                         }}
@@ -817,7 +889,7 @@ export default function BusinessCardApp() {
                         {item.name}
                       </button>
                     </li>
-                  )})}
+                  ))}
                 </ul>
               </nav>
 
@@ -846,6 +918,14 @@ export default function BusinessCardApp() {
                       <Settings className="w-4 h-4 mr-2" />
                       設定
                     </DropdownMenuItem>
+                    {(currentUser?.role === "owner" || currentUser?.role === "admin") && (
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings/document-ai">
+                          <Settings className="w-4 h-4 mr-2" />
+                          OCR エンジン設定
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={async () => {
                       await fetch('/api/logout', { method: 'POST' })
@@ -893,17 +973,22 @@ export default function BusinessCardApp() {
                 <Menu className="w-5 h-5" />
               </Button>
               <h2 className="text-lg md:text-xl font-semibold truncate">
+                {currentView === "cards" && "会社の名刺帳"}
+                {currentView === "cards_mine" && "マイ名刺帳"}
                 {currentView === "analytics" && "分析"}
                 {currentView === "dashboard" && "ダッシュボード"}
-                {currentView === "scan" && "スキャン"}
-                {currentView === "tags" && "タグ管理"}
                 {currentView === "employees" && "社員管理"}
                 {currentView === "settings" && "設定"}
               </h2>
+              {(currentView === "cards" || currentView === "cards_mine") && (
+                <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
+                  {filteredCards.length} / {totalCount.toLocaleString()} 件
+                </Badge>
+              )}
             </div>
 
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
-              {/* 通��� */}
+              {/* 通知 */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative h-11 w-11">
@@ -914,7 +999,7 @@ export default function BusinessCardApp() {
                 <TooltipContent>通知</TooltipContent>
               </Tooltip>
 
-              {/* スキャンボ���ン: モバイルではアイコンのみ */}
+              {/* スキャンボタン: モバイルではアイコンのみ */}
               <Dialog open={isScanDialogOpen} onOpenChange={setIsScanDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="gap-2 h-11 md:h-10" aria-label="名刺をスキャン">
@@ -980,6 +1065,179 @@ export default function BusinessCardApp() {
                         </button>
                       </div>
                     )}
+
+                    {/* 最近スキャンした名刺 (直近 5 件) */}
+                    {!isScanning && cards.length > 0 && (
+                      <div className="pt-2 border-t border-border space-y-2">
+                        <p className="text-xs text-muted-foreground">最近スキャンした名刺</p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {cards.slice(0, 5).map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                setSelectedCard(c)
+                                setIsScanDialogOpen(false)
+                              }}
+                              className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/40 transition-colors"
+                            >
+                              <Avatar className="w-7 h-7">
+                                <AvatarFallback className="bg-primary/10 text-primary text-[10px]">
+                                  {(c.name || "?").slice(0, 2)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{c.name || "不明"}</p>
+                                <p className="text-xs text-muted-foreground truncate">{c.company || "—"}</p>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {c.createdAt instanceof Date ? c.createdAt.toLocaleDateString("ja-JP") : ""}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* スキャン結果確認ダイアログ: OCR 後、保存前にユーザーが内容を確認・編集する */}
+              <Dialog
+                open={!!pendingScan}
+                onOpenChange={(open) => { if (!open) { setPendingScan(null) } }}
+              >
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                      スキャン結果の確認
+                    </DialogTitle>
+                    <DialogDescription>
+                      AI が抽出した内容です。間違っていれば修正してから登録できます。
+                      {pendingScan?.parser === 'rule' && (
+                        <span className="block mt-1 text-xs text-amber-600">
+                          ※ Gemini が使えないためルールベース parser で抽出しています。精度は低めです。
+                        </span>
+                      )}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {pendingScan && (
+                    <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">氏名</label>
+                          <Input value={pendingEdit.full_name || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, full_name: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">ふりがな</label>
+                          <Input value={pendingEdit.full_name_kana || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, full_name_kana: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">会社名</label>
+                        <Input value={pendingEdit.company_name || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, company_name: e.target.value }))} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">部署</label>
+                          <Input value={pendingEdit.department || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, department: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">役職</label>
+                          <Input value={pendingEdit.position || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, position: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">メール</label>
+                          <Input value={pendingEdit.email || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, email: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">電話</label>
+                          <Input value={pendingEdit.phone || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, phone: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground">携帯</label>
+                          <Input value={pendingEdit.mobile || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, mobile: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">FAX</label>
+                          <Input value={pendingEdit.fax || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, fax: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">住所</label>
+                        <Input value={pendingEdit.address || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, address: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Webサイト</label>
+                        <Input value={pendingEdit.website || ''} onChange={(e) => setPendingEdit(prev => ({ ...prev, website: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      disabled={savingPending}
+                      onClick={() => { setPendingScan(null); setPendingEdit({}) }}
+                    >
+                      いいえ（登録しない）
+                    </Button>
+                    <Button
+                      disabled={savingPending}
+                      onClick={async () => {
+                        if (!pendingScan) return
+                        setSavingPending(true)
+                        try {
+                          const merged = { ...pendingScan.ocrResult, ...pendingEdit }
+                          const saveResponse = await fetch('/api/business-cards', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ocrResult: merged, imageUrl: pendingScan.imageBase64 }),
+                          })
+                          const saveResult = await saveResponse.json()
+                          if (!saveResult.success) {
+                            throw new Error(saveResult.error || '保存に失敗しました')
+                          }
+                          const newCard: BusinessCard = {
+                            id: saveResult.data.id,
+                            name: saveResult.data.full_name || "不明",
+                            nameKana: saveResult.data.full_name_kana || "",
+                            company: saveResult.data.company_name || "",
+                            department: saveResult.data.department || "",
+                            position: saveResult.data.position || "",
+                            email: saveResult.data.email || "",
+                            phone: saveResult.data.phone || "",
+                            mobile: saveResult.data.mobile || "",
+                            address: saveResult.data.address || "",
+                            website: saveResult.data.website || "",
+                            linkedin: saveResult.data.linkedin || "",
+                            twitter: saveResult.data.twitter || "",
+                            notes: saveResult.data.notes || "",
+                            tags: saveResult.data.tags || [],
+                            isFavorite: saveResult.data.is_favorite || false,
+                            createdAt: new Date(saveResult.data.created_at),
+                            imageUrl: saveResult.data.image_url || "",
+                            syncedToGoogle: false,
+                          }
+                          setCards(prev => [newCard, ...prev])
+                          setTotalCount(prev => prev + 1)
+                          setSelectedCard(newCard)
+                          setPendingScan(null)
+                          setPendingEdit({})
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : '保存に失敗しました')
+                        } finally {
+                          setSavingPending(false)
+                        }
+                      }}
+                    >
+                      {savingPending ? '保存中...' : 'はい（登録する）'}
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -1168,94 +1426,54 @@ export default function BusinessCardApp() {
           )}
 
           {/* タグ管理ビュー */}
-          {currentView === "tags" && (
-            <div className="flex-1 p-4 md:p-6 overflow-auto">
-              <Card>
-                <CardHeader>
-                  <CardTitle>タグ一覧</CardTitle>
-                  <CardDescription>名刺に付けられたタグの管理</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {allTags.map(tag => {
-                      const count = cards.filter(c => c.tags.includes(tag)).length
-                      return (
-                        <Badge key={tag} variant="secondary" className="text-sm px-3 py-1.5">
-                          {tag} <span className="ml-2 text-muted-foreground">({count})</span>
-                        </Badge>
-                      )
-                    })}
-                    {allTags.length === 0 && (
-                      <p className="text-muted-foreground">タグがありません</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
           {/* 分析ビュー（4タブ構成） */}
           {currentView === "analytics" && (
             <div className="flex-1 p-4 md:p-6 overflow-auto">
               <Tabs value={analyticsTab} onValueChange={setAnalyticsTab} className="w-full">
-                <TabsList className="grid w-full max-w-2xl grid-cols-4 h-auto">
+                <TabsList className="grid w-full max-w-3xl grid-cols-5 h-auto">
                   <TabsTrigger value="overview">概要</TabsTrigger>
                   <TabsTrigger value="network">人脈ネットワーク</TabsTrigger>
+                  <TabsTrigger value="email-network">メール送受信</TabsTrigger>
                   <TabsTrigger value="contacts">顧客連絡頻度</TabsTrigger>
                   <TabsTrigger value="cold">営業薄企業</TabsTrigger>
                 </TabsList>
 
                 {/* タブ1: 概要 */}
                 <TabsContent value="overview" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>概要</CardTitle>
-                      <CardDescription>各種KPIサマリ</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <OverviewView />
                 </TabsContent>
 
                 {/* タブ2: 人脈ネットワーク（実DBデータをAPIから取得） */}
                 <TabsContent value="network" className="mt-6">
-                  <div className="h-[calc(100vh-220px)] min-h-[500px]">
-                    <NetworkGraph
-                      onNodeClick={(nodeId, nodeType) => {
-                        if (nodeType !== "business_card") return
-                        const cardId = nodeId.replace(/^card_/, "")
-                        const card = cards.find((c) => c.id === cardId)
-                        if (card) setSelectedCard(card)
-                      }}
-                    />
-                  </div>
+                  <NetworkGraphWrapper
+                    onNodeClick={(nodeId, nodeType) => {
+                      if (nodeType !== "business_card") return
+                      const cardId = nodeId.replace(/^card_/, "")
+                      const card = cards.find((c) => c.id === cardId)
+                      if (card) setSelectedCard(card)
+                    }}
+                  />
+                </TabsContent>
+
+                {/* タブ2.5: メール送受信ネットワーク */}
+                <TabsContent value="email-network" className="mt-6">
+                  <EmailNetworkGraph onCardClick={(id) => {
+                    const c = cards.find(x => x.id === id)
+                    if (c) setSelectedCard(c)
+                  }} />
                 </TabsContent>
 
                 {/* タブ3: 顧客連絡頻度 */}
                 <TabsContent value="contacts" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>顧客連絡頻度</CardTitle>
-                      <CardDescription>Gmail/Calendar連携による連絡履歴の頻度分析</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <ContactsView />
                 </TabsContent>
 
                 {/* タブ4: 営業薄企業 */}
                 <TabsContent value="cold" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>営業薄企業</CardTitle>
-                      <CardDescription>連絡が薄い企業の検出</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <ColdView onCardClick={(id) => {
+                    const card = cards.find((c) => c.id === id)
+                    if (card) setSelectedCard(card)
+                  }} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -1569,29 +1787,70 @@ export default function BusinessCardApp() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* 全体接続状況 */}
-                    <div className="p-4 bg-muted/50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Google アカウント</p>
-                          <p className="text-sm text-muted-foreground">
-                            {googleScopes?.email || currentUser?.email || '未接続'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {googleScopes?.hasGoogleAuth ? (
-                            <>
-                              <Badge variant="default">接続済み</Badge>
-                              {googleScopes?.tokenExpired && (
-                                <Badge variant="destructive">トークン期限切れ</Badge>
-                              )}
-                            </>
-                          ) : (
-                            <Badge variant="secondary">未接続</Badge>
-                          )}
+                    {/* 全体未接続バナー (目立つ CTA) */}
+                    {!googleScopes?.hasGoogleAuth && (
+                      <div className="p-5 rounded-xl bg-gradient-to-r from-blue-600/15 to-blue-500/10 border-2 border-blue-500/40 shadow-sm">
+                        <div className="flex items-start gap-4 flex-wrap">
+                          <div className="flex-1 min-w-[200px] space-y-1">
+                            <p className="font-semibold text-base flex items-center gap-2">
+                              <span className="inline-flex w-7 h-7 rounded-full bg-blue-500 items-center justify-center text-white text-xs">!</span>
+                              Google アカウントを連携してください
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              現在は Magic Link (メールリンク) ログインのため、Google サービス連携が無効です。下のボタンから Google でログインし直すと、Gmail / Calendar の分析が使えるようになります。
+                            </p>
+                          </div>
+                          <Button
+                            size="lg"
+                            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                            onClick={async () => {
+                              const { createClient } = await import('@/lib/supabase/client')
+                              const supabase = createClient()
+                              await supabase.auth.signInWithOAuth({
+                                provider: 'google',
+                                options: {
+                                  scopes: 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+                                  queryParams: {
+                                    include_granted_scopes: 'true',
+                                    access_type: 'offline',
+                                    prompt: 'consent',
+                                  },
+                                  redirectTo: `${window.location.origin}/auth/callback?next=/`,
+                                },
+                              })
+                            }}
+                          >
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+                              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                            </svg>
+                            Google アカウントで連携
+                          </Button>
                         </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* 全体接続状況 (接続済みの時のみ表示) */}
+                    {googleScopes?.hasGoogleAuth && (
+                      <div className="p-4 bg-muted/50 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">Google アカウント</p>
+                            <p className="text-sm text-muted-foreground">
+                              {googleScopes?.email || currentUser?.email || '未接続'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600">接続済み</Badge>
+                            {googleScopes?.tokenExpired && (
+                              <Badge variant="destructive">トークン期限切れ</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* サービス別 */}
                     <div className="space-y-3">
@@ -1617,10 +1876,9 @@ export default function BusinessCardApp() {
                               )}
                               {!isEnabled && !isDisabledByUser && (
                                 <Button
-                                  size="sm"
-                                  variant="outline"
+                                  size="default"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-sm"
                                   onClick={async () => {
-                                    // OAuth再認証でスコープ追加
                                     const { createClient } = await import('@/lib/supabase/client')
                                     const supabase = createClient()
                                     await supabase.auth.signInWithOAuth({
@@ -1637,7 +1895,7 @@ export default function BusinessCardApp() {
                                     })
                                   }}
                                 >
-                                  この権限を許可
+                                  Google で連携 →
                                 </Button>
                               )}
                             </div>
@@ -1650,6 +1908,11 @@ export default function BusinessCardApp() {
                     </p>
                   </CardContent>
                 </Card>
+
+                {/* データ整備 (管理者のみ) */}
+                {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && (
+                  <IndustryClassifyCard />
+                )}
 
                 {/* プロフィール */}
                 <Card>
@@ -1743,7 +2006,7 @@ export default function BusinessCardApp() {
                       }}
                       disabled={isSavingProfile}
                     >
-                      {isSavingProfile ? '��存中...' : '保存'}
+                      {isSavingProfile ? '保存中...' : '保存'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -1851,7 +2114,7 @@ export default function BusinessCardApp() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium">営業薄企業アラート（週次）</p>
-                        <p className="text-sm text-muted-foreground">連��頻度が低い顧客の週次サマリ</p>
+                        <p className="text-sm text-muted-foreground">連絡頻度が低い顧客の週次サマリ</p>
                       </div>
                       <input
                         type="checkbox"
@@ -1913,63 +2176,52 @@ export default function BusinessCardApp() {
           )}
 
           {/* スキャンビュー */}
-          {currentView === "scan" && (
-            <div className="flex-1 p-4 md:p-6 overflow-auto flex items-center justify-center">
-              <Card className="max-w-md w-full">
-                <CardHeader className="text-center">
-                  <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
-                  <CardTitle>AI 名刺スキャン</CardTitle>
-                  <CardDescription>名刺をカメラまたはファイルからスキャンしてください</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    accept="image/*"
-                    capture="environment"
-                  />
-                  {scanError && (
-                    <div className="p-3 mb-4 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
-                      {scanError}
+          {/* 名刺一覧ビュー */}
+          {currentView === "cards_mine" && (
+            <div className="flex-1 overflow-auto p-4 md:p-6">
+              <div className="max-w-6xl mx-auto space-y-5">
+                {/* 業務モデル明記バナー */}
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+                  <span className="font-medium text-emerald-700">名刺Plus は月額 ¥1,950 のサブスク — さらに名刺 50 枚 / 月が付いてきます</span>
+                  <span className="text-muted-foreground"> 解約は管理画面からいつでも可能。継続中は名刺 50 枚も毎月お届けします。</span>
+                </div>
+                <SubscriptionCard />
+                <TrustSection />
+                <Tabs defaultValue="my-card" className="w-full">
+                  <TabsList className="grid grid-cols-3 max-w-md">
+                    <TabsTrigger value="my-card">自分の名刺</TabsTrigger>
+                    <TabsTrigger value="collected">集めた名刺</TabsTrigger>
+                    <TabsTrigger value="orders">発注履歴</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="my-card" className="mt-5">
+                    <MyCardDesigner />
+                  </TabsContent>
+                  <TabsContent value="collected" className="mt-5">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      自分でスキャン / 手動追加した名刺の一覧です。CSV 一括インポートしたものは「会社の名刺帳」に出ます。
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {cards.length === 0 ? (
+                        <p className="text-muted-foreground col-span-full py-12 text-center">まだ名刺がありません。右上の「名刺をスキャン」から登録してください。</p>
+                      ) : cards.map(c => (
+                        <Card key={c.id} className="cursor-pointer hover:border-primary" onClick={() => setSelectedCard(c)}>
+                          <CardContent className="pt-4 space-y-1">
+                            <div className="font-medium">{c.name}</div>
+                            <div className="text-sm text-muted-foreground">{c.company}</div>
+                            {c.email && <div className="text-xs text-muted-foreground truncate">{c.email}</div>}
+                          </CardContent>
+                        </Card>
+                      ))}
                     </div>
-                  )}
-                  {isScanning ? (
-                    <div className="space-y-4">
-                      <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
-                        <div className="text-center">
-                          <Sparkles className="w-8 h-8 text-primary mx-auto mb-2 animate-pulse" />
-                          <p className="text-sm text-muted-foreground">AI が名刺を解析中...</p>
-                        </div>
-                      </div>
-                      <Progress value={scanProgress} className="h-2" />
-                      <p className="text-xs text-center text-muted-foreground">{scanStatus || `処理中... ${scanProgress}%`}</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      <button
-                        onClick={handleCameraCapture}
-                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <Camera className="w-8 h-8 text-muted-foreground" />
-                        <span className="text-sm font-medium">カメラで撮影</span>
-                      </button>
-                      <button
-                        onClick={handleFileUpload}
-                        className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <Upload className="w-8 h-8 text-muted-foreground" />
-                        <span className="text-sm font-medium">ファイルを選択</span>
-                      </button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </TabsContent>
+                  <TabsContent value="orders" className="mt-5">
+                    <MyCardOrdersList />
+                  </TabsContent>
+                </Tabs>
+              </div>
             </div>
           )}
 
-          {/* 名刺一覧ビュー */}
           {currentView === "cards" && (
             <>
               {/* ツールバー */}
@@ -2484,7 +2736,7 @@ export default function BusinessCardApp() {
                         {detailBody}
                       </aside>
                       {/* モバイル: 下からスライドアップ Sheet（全画面） */}
-                      <Sheet open={!!selectedCard} onOpenChange={(open) => { if (!open) setSelectedCard(null) }}>
+                      <Sheet open={isMobile && !!selectedCard} onOpenChange={(open) => { if (!open) setSelectedCard(null) }}>
                         <SheetContent
                           side="bottom"
                           className="md:hidden p-0 h-[92dvh] flex flex-col bg-card [&>button]:hidden"

@@ -87,7 +87,7 @@ export function SubscriptionCard() {
             </CardTitle>
             <CardDescription>
               {data.active
-                ? `毎月 ${data.delivery_day_of_month} 日に ${data.plan.monthly_cards} 枚お届け (¥${data.plan.monthly_price_jpy.toLocaleString()} / 月)`
+                ? `月額 ¥${data.plan.monthly_price_jpy.toLocaleString()} + 名刺 ${data.plan.monthly_cards} 枚も毎月 ${data.delivery_day_of_month} 日にお届け`
                 : "サブスク停止中"}
             </CardDescription>
           </div>
