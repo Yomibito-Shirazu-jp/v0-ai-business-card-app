@@ -7,11 +7,12 @@ import { AlertCircle, ExternalLink } from "lucide-react"
 export function DemoBanner() {
   const [show, setShow] = useState(false)
   useEffect(() => {
-    if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
-      setShow(true)
-    } else if (typeof window !== 'undefined' && window.location.hostname.startsWith('demo.')) {
-      setShow(true)
-    }
+    if (typeof window === 'undefined') return
+    const host = window.location.hostname.toLowerCase()
+    // plus サブドメインでは絶対表示しない
+    if (host.startsWith('plus.')) { setShow(false); return }
+    if (host.startsWith('demo.') || host.startsWith('demo-')) { setShow(true); return }
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') setShow(true)
   }, [])
   if (!show) return null
   return (
