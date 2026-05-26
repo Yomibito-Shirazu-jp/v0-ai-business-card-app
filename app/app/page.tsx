@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import Link from "next/link"
 import {
+  Receipt,
   Search,
   Plus,
   Upload,
@@ -119,6 +120,7 @@ const sidebarNav = [
   { name: "タグ管理", icon: Tag, href: "#", active: false, view: "tags" },
   { name: "アシスタント", icon: Sparkles, href: "/assistant", active: false, view: "assistant_link" },
   { name: "AI 自動化", icon: Sparkles, href: "/automation", active: false, view: "automation_link" },
+  { name: "発注・決済履歴", icon: Receipt, href: "/orders", active: false, view: "orders_link" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },
   { name: "設定", icon: Settings, href: "#", active: false, view: "settings" },
