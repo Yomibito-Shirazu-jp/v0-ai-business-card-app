@@ -179,5 +179,23 @@ export const DEMO_GOOGLE_SCOPES = {
 }
 
 export function isDemoMode(): boolean {
+  // ドメイン優先で判定する (誤った env var による事故防止)
+  // クライアント側
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase()
+    if (host.startsWith('plus.')) return false           // 本番社内ツールは絶対デモにしない
+    if (host.startsWith('demo.') || host.startsWith('demo-')) return true
+  }
+  // サーバー側 (request context があれば Host ヘッダー)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { headers } = require('next/headers') as typeof import('next/headers')
+    const h = headers()
+    // headers() は dynamic-route でしか取れないので try で囲む
+    const host = (h.get?.('host') || '').toLowerCase()
+    if (host.startsWith('plus.')) return false
+    if (host.startsWith('demo.') || host.startsWith('demo-')) return true
+  } catch { /* 静的ビルドコンテキスト等で headers が無い */ }
+  // env var フォールバック (ローカル開発で NEXT_PUBLIC_DEMO_MODE=true を立てた時)
   return process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
 }
