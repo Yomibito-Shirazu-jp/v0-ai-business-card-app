@@ -10,9 +10,15 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
 
-  const { data: emp } = await supabase
-    .from('employees').select('id, company_id, role')
-    .eq('auth_user_id', user.id).eq('status', 'active').single()
+  let emp: { id: string; company_id: string; role: string } | null = null
+  try {
+    const { data } = await supabase
+      .from('employees').select('id, company_id, role')
+      .eq('auth_user_id', user.id).eq('status', 'active').single()
+    emp = data as any
+  } catch {
+    return NextResponse.json({ error: '社員登録がありません' }, { status: 403 })
+  }
   if (!emp) return NextResponse.json({ error: '社員登録がありません' }, { status: 403 })
   if (!['owner', 'admin'].includes(emp.role)) {
     return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 })
@@ -56,6 +62,8 @@ export async function GET() {
   }
 
   // KPI
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000
+  const THIRTY_DAYS_MS = 30 * ONE_DAY_MS
   const now = Date.now()
   let totalAmount = 0
   let paidAmount = 0
@@ -71,12 +79,14 @@ export async function GET() {
     const succeededAmount = succeeded.reduce((a, b) => a + Number(b.amount || 0), 0)
     const refundedAmount = refunded.reduce((a, b) => a + Number(b.amount || 0), 0)
     const orderTotal = Number(o.total_cost || 0)
+    const netPaid = Math.max(0, succeededAmount - refundedAmount)
     totalAmount += orderTotal
-    paidAmount += succeededAmount - refundedAmount
-    unpaidAmount += Math.max(0, orderTotal - succeededAmount + refundedAmount)
+    paidAmount += netPaid
+    // refund は売掛 (balance_due) を復活させない: 支払済みが orderTotal 未満の差額のみ未払い扱い
+    unpaidAmount += Math.max(0, orderTotal - succeededAmount)
     totalQuantity += qty
     const created = new Date(o.created_at).getTime()
-    if (now - created <= 30 * 86400000) {
+    if (now - created <= THIRTY_DAYS_MS) {
       last30dCount++
       last30dAmount += orderTotal
     }
@@ -88,7 +98,9 @@ export async function GET() {
       payment_summary: {
         succeeded_amount: succeededAmount,
         refunded_amount: refundedAmount,
-        balance_due: Math.max(0, orderTotal - succeededAmount + refundedAmount),
+        // 返金は売掛を復活させない (refund は売上の取消、未払い残は orderTotal - succeededAmount)
+        balance_due: Math.max(0, orderTotal - succeededAmount),
+        net_paid: Math.max(0, succeededAmount - refundedAmount),
         latest_status: pays[0]?.status || 'pending',
       },
     }

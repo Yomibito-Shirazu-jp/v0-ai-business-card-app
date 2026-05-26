@@ -34,6 +34,7 @@ interface OrderItem {
 interface PaymentItem {
   id: string
   amount: number
+  tax_amount: number
   currency: string
   status: string
   payment_method: string | null
@@ -74,9 +75,11 @@ export default function OrdersPage() {
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<"all" | "unpaid" | "paid">("all")
   const [openId, setOpenId] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    (async () => {
+    setMounted(true)
+    ;(async () => {
       try {
         const res = await fetch("/api/orders", { cache: "no-store" })
         const j = await res.json()
@@ -152,7 +155,19 @@ export default function OrdersPage() {
               const isOpen = openId === o.id
               return (
                 <Card key={o.id}>
-                  <CardHeader className="pb-2 cursor-pointer" onClick={() => setOpenId(isOpen ? null : o.id)}>
+                  <CardHeader
+                    className="pb-2 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    onClick={() => setOpenId(isOpen ? null : o.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        setOpenId(isOpen ? null : o.id)
+                      }
+                    }}
+                  >
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
                         <CardTitle className="text-base">
@@ -160,7 +175,7 @@ export default function OrdersPage() {
                         </CardTitle>
                         <CardDescription className="mt-0.5">
                           {o.orderer?.display_name || o.orderer?.email || "—"} •{" "}
-                          {new Date(o.created_at).toLocaleString("ja-JP")}
+                          {mounted ? new Date(o.created_at).toLocaleString("ja-JP") : "—"}
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
@@ -173,9 +188,9 @@ export default function OrdersPage() {
                   {isOpen && (
                     <CardContent className="space-y-3 text-sm border-t border-border pt-3">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <Info label="発注日">{o.ordered_at ? new Date(o.ordered_at).toLocaleString("ja-JP") : "—"}</Info>
-                        <Info label="発送日">{o.shipped_at ? new Date(o.shipped_at).toLocaleString("ja-JP") : "—"}</Info>
-                        <Info label="配達日">{o.delivered_at ? new Date(o.delivered_at).toLocaleString("ja-JP") : "—"}</Info>
+                        <Info label="発注日">{mounted && o.ordered_at ? new Date(o.ordered_at).toLocaleString("ja-JP") : "—"}</Info>
+                        <Info label="発送日">{mounted && o.shipped_at ? new Date(o.shipped_at).toLocaleString("ja-JP") : "—"}</Info>
+                        <Info label="配達日">{mounted && o.delivered_at ? new Date(o.delivered_at).toLocaleString("ja-JP") : "—"}</Info>
                         <Info label="追跡番号">{o.tracking_number || "—"}</Info>
                       </div>
                       {o.shipping_address && <Info label="配送先">{o.shipping_address}</Info>}
@@ -195,7 +210,7 @@ export default function OrdersPage() {
                                     <Badge className={`${ps.color} hover:${ps.color} text-white text-[10px]`}>{ps.label}</Badge>
                                     <span className="tabular-nums">¥{Number(p.amount).toLocaleString()}</span>
                                     {p.tax_amount > 0 && <span className="text-muted-foreground">(内税 ¥{Number(p.tax_amount).toLocaleString()})</span>}
-                                    {p.payment_method === "card" && p.card_brand && (
+                                    {p.payment_method === "card" && p.card_brand && p.card_last4 && (
                                       <span className="text-muted-foreground">{p.card_brand.toUpperCase()} •••• {p.card_last4}</span>
                                     )}
                                     {p.payment_method && p.payment_method !== "card" && (
@@ -203,7 +218,7 @@ export default function OrdersPage() {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2 text-muted-foreground">
-                                    <span>{p.paid_at ? new Date(p.paid_at).toLocaleDateString("ja-JP") : new Date(p.created_at).toLocaleDateString("ja-JP")}</span>
+                                    <span>{mounted ? (p.paid_at ? new Date(p.paid_at).toLocaleDateString("ja-JP") : new Date(p.created_at).toLocaleDateString("ja-JP")) : "—"}</span>
                                     {p.receipt_url && (
                                       <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5">
                                         領収書<ExternalLink className="w-3 h-3" />
