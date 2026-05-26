@@ -161,6 +161,23 @@ export const DEMO_LOGIN_EVENTS = [
   },
 ]
 
+export const DEMO_GOOGLE_SCOPES = {
+  hasGoogleAuth: true,
+  tokenExpired: false,
+  contacts: true,
+  calendar: true,
+  gmail: true,
+  drive: true,
+  email: 'demo@example.com',
+  expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+  grantedScopes: [
+    'https://www.googleapis.com/auth/contacts.readonly',
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/drive.metadata.readonly',
+  ],
+}
+
 export function isDemoMode(): boolean {
   return process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
 }
