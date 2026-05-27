@@ -11,8 +11,8 @@ export function DemoBanner() {
     const host = window.location.hostname.toLowerCase()
     // plus サブドメインでは絶対表示しない
     if (host.startsWith('plus.')) { setShow(false); return }
-    if (host.startsWith('demo.') || host.startsWith('demo-')) { setShow(true); return }
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') setShow(true)
+    if (host.startsWith('demo.') || host.startsWith('demo-')) { /* デモ廃止のため表示しない */ return }
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') /* setShow(true) - demo deprecated */
   }, [])
   if (!show) return null
   return (

@@ -118,7 +118,6 @@ const sidebarNav = [
   { name: "マイ名刺帳", icon: Briefcase, href: "#", active: false, view: "cards_mine" },
   { name: "会社の名刺帳", icon: Briefcase, href: "#", active: true, view: "cards" },
   { name: "アシスタント", icon: Sparkles, href: "/assistant", active: false, view: "assistant_link" },
-  { name: "AI 自動化", icon: Sparkles, href: "/automation", active: false, view: "automation_link" },
   { name: "発注・決済履歴", icon: Receipt, href: "/orders", active: false, view: "orders_link" },
   { name: "分析", icon: BarChart3, href: "#", active: false, view: "analytics" },
   { name: "社員管理", icon: Users, href: "#", active: false, view: "employees" },

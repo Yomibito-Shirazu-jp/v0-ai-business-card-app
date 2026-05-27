@@ -52,7 +52,7 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // '/shop' のみ公開、'/' は認証必須のダッシュボード
-  const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth', '/shop']
+  const publicPaths = ['/login', '/auth/callback', '/auth/logout', '/api/auth', '/shop', '/lp', '/terms', '/privacy', '/contact-sales', '/api/contact-sales']
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p))
 
   if (!user && !isPublicPath) {
