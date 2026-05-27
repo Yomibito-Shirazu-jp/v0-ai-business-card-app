@@ -13,8 +13,8 @@ export function DemoCtaBar() {
     if (typeof window === 'undefined') return
     const host = window.location.hostname.toLowerCase()
     if (host.startsWith('plus.')) { setShow(false); return }
-    if (host.startsWith('demo.') || host.startsWith('demo-')) setShow(true)
-    else if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') setShow(true)
+    if (host.startsWith('demo.') || host.startsWith('demo-')) /* デモ廃止のため CTA バー無効化 */
+    else if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') /* デモ廃止のため CTA バー無効化 */
     // localStorage で閉じた状態を維持 (リロード後は再表示)
   }, [])
   if (!show || closed) return null
