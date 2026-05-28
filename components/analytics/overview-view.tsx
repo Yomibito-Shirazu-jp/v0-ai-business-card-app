@@ -7,6 +7,7 @@ import { Loader2, Briefcase, Users, Star, Building2, MessageSquare, TrendingUp }
 import {
   Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, Line, LineChart,
 } from "recharts"
+import { GmailSyncButton } from "./gmail-sync-button"
 
 interface OverviewData {
   kpi: {
@@ -89,8 +90,11 @@ export function OverviewView() {
 
       {!data.hasContactActivity && (
         <Card className="border-amber-500/30 bg-amber-500/5">
-          <CardContent className="py-3 text-sm text-amber-700">
-            Gmail / Calendar 連携を有効化すると、各名刺との実際のメッセージ頻度を見られるようになります。
+          <CardContent className="py-4">
+            <p className="text-sm text-amber-700 mb-3">
+              Gmail を同期すると、各名刺との実際のメッセージ頻度を分析できるようになります。
+            </p>
+            <GmailSyncButton onSyncComplete={() => window.location.reload()} />
           </CardContent>
         </Card>
       )}

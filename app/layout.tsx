@@ -2,9 +2,6 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Noto_Sans_JP } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
-import { DemoBanner } from '@/components/demo-banner'
-import { DemoCtaBar } from '@/components/demo-cta-bar'
-import { AdsTracking } from '@/components/ads-tracking'
 import './globals.css'
 
 const geist = Geist({
@@ -93,9 +90,6 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <DemoBanner />
-          <DemoCtaBar />
-          <AdsTracking />
           {children}
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}

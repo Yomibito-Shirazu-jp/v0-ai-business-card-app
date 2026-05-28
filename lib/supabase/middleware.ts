@@ -3,11 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
   // デモモードでは認証チェックをスキップ
-  // ドメイン優先で判定 (誤 env var による事故防止: plus.* は強制 OFF)
-  const host = (request.headers.get('host') || '').toLowerCase()
-  const isPlus = host.startsWith('plus.')
-  const isDemo = !isPlus && (host.startsWith('demo.') || host.startsWith('demo-') || process.env.NEXT_PUBLIC_DEMO_MODE === 'true')
-  if (isDemo) {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
     return NextResponse.next({ request })
   }
 

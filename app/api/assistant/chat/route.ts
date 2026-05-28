@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { callGeminiGenerateContent } from '@/lib/gemini-fetch'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -78,20 +77,27 @@ ${(recentCards || []).map((c, i) => `${i + 1}. ${c.full_name || '不明'} / ${c.
     parts: [{ text: m.text }],
   }))
 
-  let data: any
-  try {
-    data = await callGeminiGenerateContent({
-      apiKey: secrets.gemini_api_key,
-      body: {
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents,
-        generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
-      },
-    })
-  } catch (e: any) {
-    const code = e?.code === 'RATE_LIMITED' ? 429 : 502
-    return NextResponse.json({ error: e?.message || 'AI 応答失敗', code: e?.code }, { status: code })
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` +
+    `?key=${encodeURIComponent(secrets.gemini_api_key)}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      contents,
+      generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
+    }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error('[assistant/chat] gemini error:', res.status, errText)
+    return NextResponse.json({ error: `Gemini API エラー (${res.status})` }, { status: 502 })
   }
+
+  const data = await res.json() as any
   const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   return NextResponse.json({ reply })
 }
