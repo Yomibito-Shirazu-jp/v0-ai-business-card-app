@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { callGeminiGenerateContent } from '@/lib/gemini-fetch'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -78,37 +77,44 @@ export async function POST(req: NextRequest) {
 入力:
 ${targets.map((n, i) => `${i + 1}. ${n}`).join('\n')}`
 
-  let data: any
-  try {
-    data = await callGeminiGenerateContent({
-      apiKey: secrets.gemini_api_key,
-      body: {
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'object',
-            properties: {
-              results: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string' },
-                    industry: { type: 'string' },
-                  },
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` +
+    `?key=${encodeURIComponent(secrets.gemini_api_key)}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            results: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  industry: { type: 'string' },
                 },
               },
             },
           },
         },
       },
-    })
-  } catch (e: any) {
-    const status = e?.code === 'RATE_LIMITED' ? 429 : 502
-    return NextResponse.json({ ok: false, error: e?.message || 'AI 応答失敗', code: e?.code }, { status })
+    }),
+  })
+
+  if (!res.ok) {
+    const txt = await res.text()
+    console.error('[classify] gemini error:', res.status, txt)
+    return NextResponse.json({ ok: false, error: `Gemini エラー ${res.status}` }, { status: 502 })
   }
+
+  const data = (await res.json()) as any
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
   let parsed: { results?: { name: string; industry: string }[] } = {}
   try { parsed = JSON.parse(text) } catch { /* ignore */ }
