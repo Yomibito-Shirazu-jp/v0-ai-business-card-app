@@ -12,21 +12,18 @@ export async function POST() {
   if (!session?.user) {
     return NextResponse.json({ ok: false, error: '認証が必要です' }, { status: 401 })
   }
-  // 自分の employees から保存済みトークンを取得
-  const { data: emp } = await supabase
-    .from('employees')
-    .select('id, company_id, email, google_access_token, google_token_expires_at')
-    .eq('auth_user_id', session.user.id).eq('status', 'active').single()
-
-  // セッショントークンを優先、無ければ DB の保存トークン
-  let providerToken = session.provider_token || emp?.google_access_token || null
-  if (!providerToken) {
+  if (!session.provider_token) {
     return NextResponse.json({
       ok: false,
-      error: 'Google OAuth トークンがありません。設定 → Google Workspace 連携で Gmail の権限を許可してください。',
+      error: 'Google OAuth トークンがありません。設定 → Google Workspace 連携で再認証してください。',
       code: 'NO_GOOGLE_TOKEN',
     }, { status: 412 })
   }
+
+  const { data: emp } = await supabase
+    .from('employees')
+    .select('id, company_id, email')
+    .eq('auth_user_id', session.user.id).eq('status', 'active').single()
   if (!emp) {
     return NextResponse.json({ ok: false, error: '社員登録がありません' }, { status: 403 })
   }
@@ -43,7 +40,7 @@ export async function POST() {
   let pages = 0
   while (pages < 5) {
     const url = `${baseUrl}?q=${encodeURIComponent(q)}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ''}`
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${providerToken}` } })
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${session.provider_token}` } })
     if (!res.ok) {
       return NextResponse.json({ ok: false, error: `Gmail list 失敗 (${res.status})` }, { status: 502 })
     }
@@ -75,7 +72,7 @@ export async function POST() {
   const reEmail = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
   async function fetchMeta(id: string) {
     const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${providerToken}` } })
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${session.provider_token}` } })
     if (!res.ok) return
     const data = await res.json() as any
     const ts = Number(data?.internalDate) || Date.now()
